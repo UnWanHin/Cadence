@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日健身 — 骨架动作评定原型（深蹲 / 俯卧撑）</title>
+<style>
+  :root{
+    --bg:#0b1011; --surface:#11191a; --surface-2:#182324; --surface-3:#203032;
+    --ink:#f4f3ed; --muted:#8f9c98; --line:#2c3d3d;
+    --lime:#d8f36a; --mint:#80e0b5; --amber:#f3b45f; --red:#f3786b;
+    --blue:#88c7ff; --shadow:0 24px 60px rgba(0,0,0,.22);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:radial-gradient(circle at 78% 0%,#203a32 0,#0b1011 38%); color:var(--ink); font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; line-height:1.5; min-height:100vh;}
+  button{font:inherit; color:inherit; cursor:pointer; border:0;}
+  button:focus-visible,.nav-item:focus-visible{outline:2px solid var(--lime); outline-offset:3px;}
+  .app-shell{display:grid; grid-template-columns:232px minmax(0,1fr); min-height:100vh;}
+  .sidebar{padding:26px 18px; border-right:1px solid var(--line); background:rgba(9,15,15,.78); display:flex; flex-direction:column; gap:28px;}
+  .brand{display:flex; align-items:center; gap:11px; padding:0 10px;}
+  .brand-mark{width:34px; height:34px; border-radius:12px 12px 12px 3px; background:var(--lime); color:#142018; display:grid; place-items:center; font-weight:900; transform:rotate(-8deg);}
+  .brand-name{font-size:18px; font-weight:800; letter-spacing:-.04em;}
+  .brand-sub{font-size:10px; color:var(--muted); margin-top:1px;}
+  .nav{display:flex; flex-direction:column; gap:5px;}
+  .nav-label{font-size:10px; color:var(--muted); padding:0 12px 8px; letter-spacing:.12em;}
+  .nav-item{display:flex; align-items:center; gap:12px; width:100%; padding:12px; border-radius:12px; background:transparent; color:var(--muted); text-align:left; transition:background .2s,color .2s;}
+  .nav-item:hover{background:var(--surface-2); color:var(--ink);}
+  .nav-item.active{background:var(--lime); color:#17221b; font-weight:750;}
+  .nav-icon{width:22px; text-align:center; font-size:16px;}
+  .sidebar-foot{margin-top:auto; padding:14px; border:1px solid var(--line); border-radius:16px; background:linear-gradient(145deg,#1a3029,#14201f);}
+  .sidebar-foot strong{display:block; font-size:13px; margin-bottom:5px;}.sidebar-foot span{font-size:11px; color:var(--muted);}
+  .main{min-width:0; padding:28px clamp(20px,4vw,56px) 40px;}
+  .topbar{max-width:1180px; margin:0 auto 28px; display:flex; justify-content:space-between; align-items:center; gap:16px;}
+  .eyebrow{color:var(--lime); font-size:11px; font-weight:750; letter-spacing:.1em;}.topbar h1{font-size:clamp(24px,3vw,38px); margin:4px 0 0; letter-spacing:-.055em; line-height:1.08;}.topbar p{color:var(--muted); margin:7px 0 0; font-size:13px;}
+  .top-actions{display:flex; align-items:center; gap:10px;}.status-pill{border:1px solid var(--line); background:rgba(24,35,36,.8); border-radius:999px; padding:8px 12px; font-size:12px; color:var(--mint);}.avatar{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--lime);color:#152019;font-weight:800;}
+  .page{max-width:1180px; margin:0 auto; display:none; animation:pageIn .28s ease both;}.page.active{display:block;}@keyframes pageIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+  .hero-grid{display:grid; grid-template-columns:minmax(0,1.45fr) minmax(280px,.8fr); gap:18px;}.hero-card,.surface{background:rgba(17,25,26,.88); border:1px solid var(--line); border-radius:24px; box-shadow:var(--shadow);}.hero-card{padding:28px; min-height:330px; position:relative; overflow:hidden;}.hero-card:after{content:""; position:absolute; width:260px;height:260px;right:-80px;bottom:-110px;border:1px solid rgba(216,243,106,.3);border-radius:50%;box-shadow:0 0 0 26px rgba(216,243,106,.05),0 0 0 52px rgba(216,243,106,.035);}.hero-card h2{font-size:clamp(28px,4vw,48px); letter-spacing:-.07em; line-height:1; max-width:470px; margin:12px 0 16px;}.hero-card p{color:var(--muted);max-width:430px;font-size:14px}.hero-actions{display:flex; gap:10px; margin-top:28px; position:relative; z-index:1;}.primary{background:var(--lime); color:#17221b; padding:12px 18px; border-radius:12px; font-weight:800;}.secondary,.ghost{background:var(--surface-3); border:1px solid var(--line); padding:11px 16px; border-radius:12px;}.secondary:hover,.ghost:hover{border-color:var(--lime);}.stat-stack{display:grid; gap:12px;}.stat-card{padding:20px; min-height:100px; background:var(--surface); border:1px solid var(--line); border-radius:20px;}.stat-card .value{font-size:32px;font-weight:850;letter-spacing:-.05em;}.stat-card .label{color:var(--muted);font-size:12px;margin-top:3px;}.stat-card.accent{background:var(--lime);color:#17221b;border-color:var(--lime);}.stat-card.accent .label{color:#4b663f;}
+  .section-head{display:flex; align-items:end; justify-content:space-between; gap:12px; margin:34px 0 14px;}.section-head h2{font-size:18px;letter-spacing:-.035em;margin:0}.section-head span{font-size:12px;color:var(--muted);}.exercise-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;}.exercise-card{padding:16px;min-height:150px;background:var(--surface);border:1px solid var(--line);border-radius:18px;cursor:pointer;transition:transform .2s,border-color .2s;background-image:linear-gradient(135deg,rgba(128,224,181,.09),transparent 48%);}.exercise-card:hover{transform:translateY(-3px);border-color:var(--mint);}.exercise-card .exercise-symbol{font-size:28px;margin-bottom:20px;}.exercise-card h3{font-size:14px;margin:0 0 5px}.exercise-card p{font-size:11px;color:var(--muted);margin:0;}.report-strip{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:12px;}.report-card{padding:18px;background:var(--surface);border:1px solid var(--line);border-radius:18px;}.report-card strong{font-size:25px;display:block}.report-card span{font-size:12px;color:var(--muted);}.empty{color:var(--muted);font-size:13px;padding:30px 0;}
+  .stage{display:grid;grid-template-columns:minmax(0,1.4fr) 330px;gap:18px;align-items:start;}.training-stage{min-width:0;}.cam{position:relative;width:100%;height:min(68vh,680px);min-height:420px;background:#050707;border-radius:24px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);}.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.cam canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}.flip video{transform:scaleX(-1)}.cam .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;padding:24px;text-align:center}.toolbar{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}.toolbar button{background:var(--surface-2);border:1px solid var(--line);padding:9px 13px;border-radius:10px;font-size:12px;font-weight:700}.toolbar button:hover{border-color:var(--mint)}.toolbar button.active{background:var(--lime);color:#17221b;border-color:var(--lime)}
+  .training-side{display:grid;gap:12px}.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:16px}.panel h2{font-size:11px;letter-spacing:.1em;color:var(--muted);margin:0 0 12px;font-weight:750}.panel2{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}.seg{display:flex;flex-wrap:wrap;background:var(--surface-2);border-radius:11px;padding:3px;gap:3px}.seg button{flex:1 1 28%;background:transparent;border:none;padding:8px 5px;border-radius:8px;font-size:11px}.seg button.active{background:var(--mint);color:#15251e}.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.metric{background:var(--surface-2);border-radius:11px;padding:11px;text-align:center}.metric .v{font-size:22px;font-weight:850;font-variant-numeric:tabular-nums}.metric .l{font-size:10px;color:var(--muted);margin-top:2px}.big-rep{font-size:60px;font-weight:900;text-align:center;line-height:1;margin:5px 0 0;letter-spacing:-.08em}.feedback{min-height:58px;background:var(--surface-2);border-radius:11px;padding:11px 13px;margin-top:11px;font-size:13px;font-weight:650;display:flex;align-items:center}.feedback.ok{border-left:4px solid var(--mint);color:var(--mint)}.feedback.warn{border-left:4px solid var(--amber);color:var(--amber)}.feedback.bad{border-left:4px solid var(--red);color:var(--red)}.feedback.off{border-left:4px solid var(--line);color:var(--muted)}.issue{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;color:var(--amber)}.issue .dot{width:6px;height:6px;border-radius:50%;background:var(--amber);flex-shrink:0}.state,.log{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;color:var(--muted);white-space:pre-wrap;background:#091011;border-radius:10px;padding:10px;overflow:auto}.state{max-height:140px}.log{max-height:200px;line-height:1.6}.log .t{color:#5b706d}.log .ok{color:var(--mint)}.log .err{color:var(--red)}.log .info{color:var(--blue)}.sliders{display:flex;flex-direction:column;gap:8px}.sliders label{font-size:11px;color:var(--muted);display:flex;justify-content:space-between}.sliders input{width:100%;accent-color:var(--lime)}.note{font-size:11px;color:var(--muted);margin-top:10px}.hidden{display:none!important}
+  .library-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.library-card{padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:20px;min-height:210px;display:flex;flex-direction:column}.library-card .large-symbol{font-size:42px}.library-card h3{margin:16px 0 4px;font-size:20px;letter-spacing:-.04em}.library-card p{color:var(--muted);font-size:13px;margin:0}.library-card button{margin-top:auto;align-self:flex-start}.tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.tag{font-size:10px;color:var(--mint);border:1px solid rgba(128,224,181,.35);padding:4px 7px;border-radius:999px}.report-layout{display:grid;grid-template-columns:1.1fr .9fr;gap:16px}.report-main{padding:26px}.score-ring{width:130px;height:130px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at center,var(--surface) 55%,transparent 56%),conic-gradient(var(--lime) 0 72%,var(--surface-3) 72%);font-size:35px;font-weight:850}.report-main .score-line{display:flex;align-items:center;gap:22px}.report-main h2{font-size:28px;letter-spacing:-.06em;margin:0 0 4px}.report-list{display:grid;gap:9px;margin-top:22px}.report-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--line);font-size:13px}.report-row span{color:var(--muted)}.settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.settings-card{padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:18px}.settings-card h3{margin:0 0 5px;font-size:16px}.settings-card p{margin:0 0 16px;color:var(--muted);font-size:12px}.switch-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:13px}.switch{width:42px;height:24px;border-radius:20px;background:var(--surface-3);padding:3px}.switch:after{content:"";display:block;width:18px;height:18px;border-radius:50%;background:var(--muted);transition:transform .2s}.switch.on{background:var(--lime)}.switch.on:after{background:#17221b;transform:translateX(18px)}
+  .mobile-nav{display:none}.drawer{position:fixed;inset:0;background:rgba(0,0,0,.58);z-index:20;display:none;justify-content:flex-end}.drawer.open{display:flex}.drawer-content{width:min(420px,100%);height:100%;overflow:auto;background:var(--surface);padding:24px;border-left:1px solid var(--line);animation:drawerIn .25s ease both}@keyframes drawerIn{from{transform:translateX(100%)}to{transform:none}}.drawer-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}.drawer-head h2{margin:0;letter-spacing:-.04em}.close{background:var(--surface-2);border:1px solid var(--line);width:34px;height:34px;border-radius:10px}.dev-control{margin-top:16px}
+  @media(max-width:1050px){.exercise-grid{grid-template-columns:repeat(3,1fr)}.stage{grid-template-columns:minmax(0,1fr) 300px}.sidebar{width:210px}}
+  @media(max-width:820px){.app-shell{display:block}.sidebar{display:none}.main{padding:20px 16px 88px}.topbar{margin-bottom:20px}.topbar h1{font-size:28px}.top-actions .status-pill{display:none}.mobile-nav{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);bottom:12px;left:12px;right:12px;z-index:10;background:rgba(24,35,36,.96);border:1px solid var(--line);border-radius:17px;padding:6px;box-shadow:var(--shadow)}.mobile-nav .nav-item{display:grid;justify-items:center;gap:1px;padding:7px 3px;font-size:10px;text-align:center}.mobile-nav .nav-icon{font-size:15px}.stage,.hero-grid,.report-layout{grid-template-columns:1fr}.cam{height:min(62vh,560px);min-height:320px}.training-side{grid-template-columns:1fr 1fr}.library-grid{grid-template-columns:repeat(2,1fr)}.settings-grid{grid-template-columns:1fr}.exercise-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:520px){.hero-card{padding:22px;min-height:300px}.hero-card h2{font-size:34px}.exercise-grid,.library-grid{grid-template-columns:1fr 1fr}.exercise-card{min-height:135px;padding:13px}.exercise-card .exercise-symbol{margin-bottom:14px}.training-side{grid-template-columns:1fr}.cam{height: min(58vh, 480px);min-height:260px}.toolbar button{flex:1}.topbar{align-items:flex-start}.avatar{margin-top:3px}}
+  @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">C</div><div><div class="brand-name">Cadence</div><div class="brand-sub">本地动作训练</div></div></div>
+    <nav class="nav" aria-label="主导航">
+      <div class="nav-label">训练空间</div>
+      <button class="nav-item active" data-page="home"><span class="nav-icon">⌂</span><span>今日训练</span></button>
+      <button class="nav-item" data-page="train"><span class="nav-icon">◉</span><span>实时训练</span></button>
+      <button class="nav-item" data-page="library"><span class="nav-icon">◫</span><span>动作库</span></button>
+      <button class="nav-item" data-page="report"><span class="nav-icon">↗</span><span>训练报告</span></button>
+      <div class="nav-label" style="margin-top:18px">工具</div>
+      <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>设置</span></button>
+    </nav>
+    <div class="sidebar-foot"><strong>纯本地识别</strong><span>视频和动作数据留在你的设备里</span></div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <div><div class="eyebrow" id="pageEyebrow">MONDAY · 训练日</div><h1 id="pageTitle">把今天练成一个节奏。</h1><p id="pageSubtitle">从一个动作开始，保持稳定，比追求完美更重要。</p></div>
+      <div class="top-actions"><div class="status-pill">● 本地模型已就绪</div><div class="avatar">YG</div></div>
+    </div>
+
+    <section class="page active" id="page-home">
+      <div class="hero-grid">
+        <div class="hero-card"><div class="eyebrow">今日计划 · 12 分钟</div><h2>给身体一个清晰的信号。</h2><p>完成一组动作，记录你的节奏、质量和进步。今天从深蹲开始，动作稳，分数自然会上来。</p><div class="hero-actions"><button class="primary" data-go="train">开始训练</button><button class="secondary" data-go="library">查看动作</button></div></div>
+        <div class="stat-stack"><div class="stat-card accent"><div class="value" id="homePoints">0</div><div class="label">今日积分</div></div><div class="stat-card"><div class="value" id="homeMinutes">00:00</div><div class="label">训练时长</div></div><div class="stat-card"><div class="value">3 <small style="font-size:14px">天</small></div><div class="label">当前连续训练</div></div></div>
+      </div>
+      <div class="section-head"><h2>今天练什么</h2><span>选择一个动作进入实时训练</span></div>
+      <div class="exercise-grid">
+        <button class="exercise-card" data-exercise-go="squat"><div class="exercise-symbol">◒</div><h3>深蹲</h3><p>腿部 · 膝角评估</p></button><button class="exercise-card" data-exercise-go="pushup"><div class="exercise-symbol">↘</div><h3>俯卧撑</h3><p>胸肩 · 肘角评估</p></button><button class="exercise-card" data-exercise-go="lunge"><div class="exercise-symbol">◑</div><h3>弓步蹲</h3><p>腿部 · 稳定性</p></button><button class="exercise-card" data-exercise-go="plank"><div class="exercise-symbol">—</div><h3>平板支撑</h3><p>核心 · 身体直线</p></button><button class="exercise-card" data-exercise-go="jumpingjack"><div class="exercise-symbol">✦</div><h3>开合跳</h3><p>全身 · 节奏协调</p></button>
+      </div>
+      <div class="section-head"><h2>最近表现</h2><span>本地记录</span></div><div class="report-strip"><div class="report-card"><strong id="homeQuality">--</strong><span>平均质量分</span></div><div class="report-card"><strong id="homeReps">0</strong><span>完成次数</span></div><div class="report-card"><strong id="homeCalories">0</strong><span>估算卡路里</span></div></div>
+    </section>
+
+    <section class="page" id="page-train">
+      <div class="stage"><div class="training-stage"><div class="cam" id="camWrap"><video id="inputVideo" autoplay playsinline muted></video><canvas id="overlay"></canvas><div class="placeholder" id="placeholder">点击「开启相机」或「上传视频」开始</div></div><div class="toolbar"><button id="btnCam" class="active">开启相机</button><button id="btnStop">停止</button><button id="btnFile">上传视频</button><button id="btnReplay">重播</button><button id="btnLoop">自动重播</button><button id="btnMirror">整体镜像</button><input type="file" id="fileInput" accept="video/*" style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;"></div></div>
+        <div class="training-side"><div class="panel"><h2>当前动作</h2><div class="seg" id="exSeg"><button data-ex="squat" class="active">深蹲</button><button data-ex="pushup">俯卧撑</button><button data-ex="lunge">弓步蹲</button><button data-ex="plank">平板</button><button data-ex="jumpingjack">开合跳</button></div><div class="big-rep" id="repCount">0</div><div style="text-align:center;color:var(--muted);font-size:11px">次数</div><div class="metrics"><div class="metric"><div class="v" id="mAngle">--</div><div class="l" id="mAngleLabel">主关节角</div></div><div class="metric"><div class="v" id="mState">待机</div><div class="l">阶段</div></div><div class="metric"><div class="v" id="mScore">--</div><div class="l">质量分</div></div><div class="metric"><div class="v" id="mCal">0</div><div class="l">卡路里</div></div></div><div class="feedback off" id="feedback">等待识别人体…</div><div class="panel2" id="issuesBox" style="margin-top:12px;display:none"><div style="font-size:11px;color:var(--muted);margin-bottom:5px">动作问题提示</div><div id="issues"></div></div></div><div class="panel"><h2>本次训练</h2><div class="metrics"><div class="metric"><div class="v" id="mTime">00:00</div><div class="l">时长</div></div><div class="metric"><div class="v" id="mPoints">0</div><div class="l">积分</div></div><div class="metric"><div class="v" id="mReps">0</div><div class="l">总次数</div></div><div class="metric"><div class="v" id="mQuality">--</div><div class="l">平均质量</div></div></div></div></div>
+      </div>
+    </section>
+
+    <section class="page" id="page-library"><div class="section-head" style="margin-top:0"><h2>动作库</h2><span>选择动作后直接进入训练</span></div><div class="library-grid"><div class="library-card"><div class="large-symbol">◒</div><h3>深蹲</h3><p>通过膝角和髋角观察下蹲深度与躯干稳定。</p><div class="tag-row"><span class="tag">腿部</span><span class="tag">膝角</span></div><button class="primary" data-exercise-go="squat">开始动作</button></div><div class="library-card"><div class="large-symbol">↘</div><h3>俯卧撑</h3><p>关注肘部下压和身体是否保持一条直线。</p><div class="tag-row"><span class="tag">胸肩</span><span class="tag">肘角</span></div><button class="primary" data-exercise-go="pushup">开始动作</button></div><div class="library-card"><div class="large-symbol">◑</div><h3>弓步蹲</h3><p>检查前腿膝角、左右受力与躯干前倾。</p><div class="tag-row"><span class="tag">腿部</span><span class="tag">平衡</span></div><button class="primary" data-exercise-go="lunge">开始动作</button></div><div class="library-card"><div class="large-symbol">—</div><h3>平板支撑</h3><p>用髋角估计身体直线，按保持时间累计训练量。</p><div class="tag-row"><span class="tag">核心</span><span class="tag">保持型</span></div><button class="primary" data-exercise-go="plank">开始动作</button></div><div class="library-card"><div class="large-symbol">✦</div><h3>开合跳</h3><p>通过腕距观察展开与并拢的节奏协调。</p><div class="tag-row"><span class="tag">全身</span><span class="tag">节奏</span></div><button class="primary" data-exercise-go="jumpingjack">开始动作</button></div></div></section>
+
+    <section class="page" id="page-report"><div class="report-layout"><div class="surface report-main"><div class="eyebrow">训练总结</div><div class="score-line"><div class="score-ring" id="reportScore">--</div><div><h2>保持这个节奏</h2><p style="color:var(--muted);font-size:13px;margin:0">质量比数量更能说明你的进步。</p></div></div><div class="report-list"><div class="report-row"><span>完成次数</span><strong id="reportReps">0</strong></div><div class="report-row"><span>训练时长</span><strong id="reportTime">00:00</strong></div><div class="report-row"><span>估算卡路里</span><strong id="reportCal">0</strong></div><div class="report-row"><span>获得积分</span><strong id="reportPoints">0</strong></div></div></div><div class="surface report-main"><div class="eyebrow">动作反馈</div><h2 style="margin-top:12px">哪里可以更好</h2><p style="color:var(--muted);font-size:13px">根据本次识别到的动作质量，继续关注这些细节。</p><div id="reportIssues" class="report-list"><div class="empty">完成一组训练后，这里会出现反馈。</div></div></div></div></section>
+
+    <section class="page" id="page-settings"><div class="section-head" style="margin-top:0"><h2>设置</h2><span>把训练环境调成你的节奏</span></div><div class="settings-grid"><div class="settings-card"><h3>训练显示</h3><p>控制视频展示与播放行为。</p><div class="switch-row"><span>整体镜像</span><button class="switch on" id="settingMirror" aria-label="切换整体镜像"></button></div><div class="switch-row"><span>自动重播</span><button class="switch" id="settingLoop" aria-label="切换自动重播"></button></div></div><div class="settings-card"><h3>识别阈值</h3><p>用于调试动作到位和回位的敏感度。</p><div class="sliders"><label>到位角 <span id="sLowV">90°</span></label><input type="range" id="sLow" min="50" max="130" value="90"><label>回位角 <span id="sHighV">160°</span></label><input type="range" id="sHigh" min="120" max="180" value="160"><label>进入阈值 <span id="sEnterV">0.75</span></label><input type="range" id="sEnter" min="50" max="95" value="75"><label>退出阈值 <span id="sExitV">0.55</span></label><input type="range" id="sExit" min="30" max="90" value="55"></div></div><div class="settings-card"><h3>开发调试</h3><p>查看模型加载日志和当前关键点状态。</p><button class="secondary" id="btnDebug">打开调试抽屉</button></div></div></section>
+  </main>
+</div>
+<nav class="mobile-nav" aria-label="移动端导航"><button class="nav-item active" data-page="home"><span class="nav-icon">⌂</span><span>首页</span></button><button class="nav-item" data-page="train"><span class="nav-icon">◉</span><span>训练</span></button><button class="nav-item" data-page="library"><span class="nav-icon">◫</span><span>动作</span></button><button class="nav-item" data-page="report"><span class="nav-icon">↗</span><span>报告</span></button><button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span>设置</span></button></nav>
+<div class="drawer" id="debugDrawer"><div class="drawer-content"><div class="drawer-head"><h2>调试信息</h2><button class="close" id="closeDebug">×</button></div><div class="panel"><h2>当前状态</h2><div class="state" id="state">未开始</div></div><div class="panel dev-control"><h2>加载日志</h2><div class="log" id="log"></div></div></div></div>
+
+<script type="module">
+import { PoseLandmarker, FilesetResolver, DrawingUtils } from './vision_bundle.mjs';
+
+// ---------- 状态 ----------
+const S = {
+  exercise: 'squat',
+  mode: 'camera',           // camera | video
+  running: false,
+  repCount: 0,
+  phase: 'idle',            // idle | down | up
+  // 关键关节角
+  angles: {},               // 主关节角
+  // 计数状态机
+  inDown: false,            // 是否处于「到位」状态
+  lastDownProb: 0,
+  // 阈值（来自滑块）
+  thr: { low: 90, high: 160, enter: 0.75, exit: 0.55 },
+  smoothAngle: null,        // EMA 平滑后的主角度
+  videoFit: null,           // 视频渲染区映射参数（sizeCanvas 填充）
+  mirror: true,             // 整体镜像（底图+骨架一起翻）。true=正常视角，false=自拍视角
+  // 指标系统
+  metrics: {
+    startTime: 0,           // 运动开始时间戳
+    points: 0,              // 积分
+    calories: 0,            // 卡路里
+    totalReps: 0,           // 总次数
+    qualitySum: 0,          // 质量分累计
+    qualityCount: 0,        // 质量分采样次数
+    lastRepQuality: null,   // 上一次动作的质量分
+    issues: [],              // 本次训练出现过的问题
+  },
+};
+
+let poseLandmarker = null;
+const video = document.getElementById('inputVideo');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const camWrap = document.getElementById('camWrap');
+let stream = null;
+let lastVideoTime = -1;
+let rafId = null;
+
+// ---------- 前端日志 ----------
+const logEl = document.getElementById('log');
+function log(msg, type='info'){
+  const t = new Date().toLocaleTimeString('zh-CN', {hour12:false});
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="t">[${t}]</span> <span class="${type}">${msg}</span>`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+  console.log('[prototype]', msg);
+}
+
+// ---------- 元素引用 ----------
+const el = {
+  repCount: document.getElementById('repCount'),
+  mAngle: document.getElementById('mAngle'),
+  mAngleLabel: document.getElementById('mAngleLabel'),
+  mState: document.getElementById('mState'),
+  feedback: document.getElementById('feedback'),
+  state: document.getElementById('state'),
+  placeholder: document.getElementById('placeholder'),
+  btnCam: document.getElementById('btnCam'),
+  btnStop: document.getElementById('btnStop'),
+  btnFile: document.getElementById('btnFile'),
+  btnReplay: document.getElementById('btnReplay'),
+  btnLoop: document.getElementById('btnLoop'),
+  btnMirror: document.getElementById('btnMirror'),
+  fileInput: document.getElementById('fileInput'),
+  exSeg: document.getElementById('exSeg'),
+  mScore: document.getElementById('mScore'),
+  mCal: document.getElementById('mCal'),
+  issuesBox: document.getElementById('issuesBox'),
+  issues: document.getElementById('issues'),
+  mTime: document.getElementById('mTime'),
+  mPoints: document.getElementById('mPoints'),
+  mReps: document.getElementById('mReps'),
+  mQuality: document.getElementById('mQuality'),
+  sLow: document.getElementById('sLow'), sLowV: document.getElementById('sLowV'),
+  sHigh: document.getElementById('sHigh'), sHighV: document.getElementById('sHighV'),
+  sEnter: document.getElementById('sEnter'), sEnterV: document.getElementById('sEnterV'),
+  sExit: document.getElementById('sExit'), sExitV: document.getElementById('sExitV'),
+  settingMirror: document.getElementById('settingMirror'),
+  settingLoop: document.getElementById('settingLoop'),
+  debugDrawer: document.getElementById('debugDrawer'),
+  btnDebug: document.getElementById('btnDebug'),
+  closeDebug: document.getElementById('closeDebug'),
+  pageTitle: document.getElementById('pageTitle'),
+  pageSubtitle: document.getElementById('pageSubtitle'),
+  pageEyebrow: document.getElementById('pageEyebrow'),
+  homePoints: document.getElementById('homePoints'),
+  homeMinutes: document.getElementById('homeMinutes'),
+  homeQuality: document.getElementById('homeQuality'),
+  homeReps: document.getElementById('homeReps'),
+  homeCalories: document.getElementById('homeCalories'),
+  reportScore: document.getElementById('reportScore'),
+  reportReps: document.getElementById('reportReps'),
+  reportTime: document.getElementById('reportTime'),
+  reportCal: document.getElementById('reportCal'),
+  reportPoints: document.getElementById('reportPoints'),
+  reportIssues: document.getElementById('reportIssues'),
+};
+
+// ---------- 角度工具 ----------
+function angleAt(a, b, c){
+  // 以 b 为顶点，a-b-c 的夹角（度）
+  const ab = {x:a.x-b.x, y:a.y-b.y};
+  const cb = {x:c.x-b.x, y:c.y-b.y};
+  const dot = ab.x*cb.x + ab.y*cb.y;
+  const na = Math.hypot(ab.x, ab.y), nc = Math.hypot(cb.x, cb.y);
+  if (na===0||nc===0) return null;
+  let cos = dot/(na*nc);
+  cos = Math.max(-1, Math.min(1, cos));
+  return Math.acos(cos)*180/Math.PI;
+}
+
+// BlazePose 关键点索引
+const KP = {L_SHO:11,R_SHO:12,L_ELB:13,R_ELB:14,L_WRI:15,R_WRI:16,
+  L_HIP:23,R_HIP:24,L_KNE:25,R_KNE:26,L_ANK:27,R_ANK:28};
+
+// ---------- 角度提取 ----------
+function extractAngles(lm){
+  const vis = (i)=> lm[i].visibility;
+  function jointAngle(p1,p2,p3){
+    if(Math.min(vis(p1),vis(p2),vis(p3)) < 0.5) return null;
+    return angleAt(lm[p1], lm[p2], lm[p3]);
+  }
+
+  const leftKnee  = jointAngle(KP.L_HIP, KP.L_KNE, KP.L_ANK);
+  const rightKnee = jointAngle(KP.R_HIP, KP.R_KNE, KP.R_ANK);
+  const leftElbow  = jointAngle(KP.L_SHO, KP.L_ELB, KP.L_WRI);
+  const rightElbow = jointAngle(KP.R_SHO, KP.R_ELB, KP.R_WRI);
+  const leftHip  = jointAngle(KP.L_SHO, KP.L_HIP, KP.L_KNE);
+  const rightHip = jointAngle(KP.R_SHO, KP.R_HIP, KP.R_KNE);
+  // 肩角（髋-肩-肘），用于开合跳手臂展开判定
+  const leftShoulder  = jointAngle(KP.L_HIP, KP.L_SHO, KP.L_ELB);
+  const rightShoulder = jointAngle(KP.R_HIP, KP.R_SHO, KP.R_ELB);
+  // 左右腕水平距离（归一化，用于开合跳手臂开合）
+  const lw = lm[KP.L_WRI], rw = lm[KP.R_WRI];
+  const wristDist = (lw.visibility>0.5 && rw.visibility>0.5) ? Math.hypot(lw.x-rw.x, lw.y-rw.y) : null;
+
+  return {
+    knee: min(leftKnee, rightKnee),
+    elbow: min(leftElbow, rightElbow),
+    hip: min(leftHip, rightHip),
+    shoulder: min(leftShoulder, rightShoulder),
+    wristDist,
+    leftKnee, rightKnee, leftElbow, rightElbow, leftHip, rightHip, leftShoulder, rightShoulder,
+  };
+}
+function min(a,b){
+  if(a==null&&b==null) return null;
+  if(a==null) return b; if(b==null) return a;
+  return Math.min(a,b);
+}
+function max(a,b){
+  if(a==null&&b==null) return null;
+  if(a==null) return b; if(b==null) return a;
+  return Math.max(a,b);
+}
+
+// ---------- 动作定义表（数据驱动） ----------
+const EXERCISES = {
+  squat: {
+    name: '深蹲',
+    mainAngle: (a)=> a.knee,           // 主关节角：膝角
+    mainLabel: '膝角',
+    lowLabel: '下蹲到位', highLabel: '站立回位',
+    // 纠错规则：返回问题列表（角度越界就提示）
+    checkIssues: (a)=>{
+      const issues = [];
+      // 膝盖内扣：左右膝水平位置差异（用踝-膝-髋的侧向判断较复杂，这里用膝角差异近似）
+      if(a.leftKnee!=null && a.rightKnee!=null && Math.abs(a.leftKnee-a.rightKnee) > 20){
+        issues.push('左右膝屈度不一致，可能重心偏移');
+      }
+      // 背部过前倾：髋角（肩-髋-膝）过小
+      if(a.hip!=null && a.hip < 60){
+        issues.push('背部过于前倾，注意挺胸');
+      }
+      return issues;
+    },
+    calPerRep: 0.6,
+  },
+  pushup: {
+    name: '俯卧撑',
+    mainAngle: (a)=> a.elbow,          // 主关节角：肘角
+    mainLabel: '肘角',
+    lowLabel: '下降到位', highLabel: '撑起伸直',
+    checkIssues: (a)=>{
+      const issues = [];
+      // 腰塌/翘：身体是否成直线（用髋角判断，肩-髋-膝接近180°为直线）
+      if(a.hip!=null && (a.hip < 150 || a.hip > 200)){
+        issues.push('身体未保持直线，注意核心收紧、不要塌腰或翘臀');
+      }
+      if(a.leftElbow!=null && a.rightElbow!=null && Math.abs(a.leftElbow-a.rightElbow) > 20){
+        issues.push('左右臂受力不均');
+      }
+      return issues;
+    },
+    calPerRep: 0.5,
+  },
+  lunge: {
+    name: '弓步蹲',
+    mainAngle: (a)=> a.knee,           // 主关节角：前腿膝角
+    mainLabel: '前膝角',
+    lowLabel: '下蹲到位', highLabel: '回位',
+    checkIssues: (a)=>{
+      const issues = [];
+      if(a.hip!=null && a.hip < 60) issues.push('躯干前倾过多');
+      if(a.leftKnee!=null && a.rightKnee!=null && Math.abs(a.leftKnee-a.rightKnee) > 25){
+        issues.push('双腿距离或屈度不均');
+      }
+      return issues;
+    },
+    calPerRep: 0.7,
+  },
+  plank: {
+    name: '平板支撑',
+    // 平板支撑是「保持」型，不是「到位/回位」型，用身体直线度判定
+    mainAngle: (a)=> a.hip,            // 主角度：髋角（直线度）
+    mainLabel: '髋角',
+    lowLabel: '', highLabel: '',
+    // 平板支撑没有「计数」，改用它自己的判定逻辑
+    isHold: true,
+    checkIssues: (a)=>{
+      const issues = [];
+      if(a.hip!=null && (a.hip < 150 || a.hip > 200)){
+        issues.push('身体未保持直线，塌腰或翘臀');
+      }
+      return issues;
+    },
+    calPerSec: 0.15,   // 平板支撑按秒算卡路里
+  },
+  jumpingjack: {
+    name: '开合跳',
+    // 开合跳看手臂展开（腕距）和腿开合
+    mainAngle: (a)=> a.wristDist,      // 主度量：左右腕水平距离
+    mainLabel: '腕距',
+    lowLabel: '展开', highLabel: '并拢',
+    // 开合跳用腕距判定（大=展开，小=并拢），不用角度
+    useDist: true,
+    checkIssues: (a)=>{
+      const issues = [];
+      if(a.leftShoulder!=null && a.rightShoulder!=null && Math.abs(a.leftShoulder-a.rightShoulder) > 25){
+        issues.push('手臂展开不协调');
+      }
+      return issues;
+    },
+    calPerRep: 0.4,
+  },
+};
+
+// ---------- 判定逻辑（数据驱动核心） ----------
+function evaluate(angles){
+  const ex = EXERCISES[S.exercise];
+  if(!ex) return { mainAngle:null, downProb:0, feedback:'未知动作', level:'off' };
+
+  // 平板支撑：保持型，单独处理
+  if(ex.isHold){
+    const hip = angles.hip;
+    if(hip==null) return { mainAngle:null, downProb:0, feedback:'未检测到身体', level:'off' };
+    // 直线度：髋角越接近180°越好
+    const quality = Math.max(0, 1 - Math.abs(hip-180)/60);  // 0~1
+    return { mainAngle:hip, downProb:0, holdQuality:quality, label:'髋角(直线度)' };
+  }
+
+  // 主度量：开合跳用腕距，其他用角度
+  let main = ex.useDist ? angles.wristDist : ex.mainAngle(angles);
+  if(main==null){
+    return { mainAngle:null, downProb:0, feedback: ex.useDist ? '未检测到手腕' : '未检测到关键点', level:'off' };
+  }
+
+  let downProb = 0;
+  if(ex.useDist){
+    // 开合跳：腕距大 = 展开（down=1 表示「展开到位」），小 = 并拢
+    // 归一化：腕距 0~0.8 之间映射
+    const d = main;
+    if(d >= 0.7) downProb = 1;
+    else if(d <= 0.25) downProb = 0;
+    else downProb = (d - 0.25) / (0.7 - 0.25);
+  } else {
+    // 角度型：角度低 = 到位（蹲/压到底）
+    if(main <= S.thr.low) downProb = 1;
+    else if(main >= S.thr.high) downProb = 0;
+    else downProb = (S.thr.high - main) / (S.thr.high - S.thr.low);
+  }
+
+  return { mainAngle:main, downProb, label:ex.mainLabel };
+}
+
+// ---------- 计数状态机 ----------
+function updateCounter(downProb){
+  // 进入：downProb 上穿 enter 阈值；退出：下穿 exit 阈值
+  if(!S.inDown && downProb >= S.thr.enter){
+    S.inDown = true;
+    S.phase = 'down';
+  } else if(S.inDown && downProb <= S.thr.exit){
+    S.inDown = false;
+    S.phase = 'up';
+    S.repCount++;
+    S.metrics.totalReps++;
+    // 完成一次动作：结算积分和卡路里
+    const ex = EXERCISES[S.exercise];
+    const q = S.metrics.lastRepQuality ?? 0.85;  // 默认质量系数
+    S.metrics.points += Math.round(10 * q);       // 每次10分 × 质量系数
+    S.metrics.calories += ex.calPerRep || 0.5;
+  } else if(S.inDown){
+    S.phase = 'down';
+  } else {
+    S.phase = 'up';
+  }
+}
+
+// BlazePose 的 PoseLandmarker.POSE_CONNECTIONS 主要覆盖躯干和四肢，
+// 脸部 11 个关键点需要单独补线，否则实时层只有身体没有脸。
+const FACE_CONNECTIONS = [
+  [0,1],[1,2],[2,3],[3,7],
+  [0,4],[4,5],[5,6],[6,8],
+  [9,10]
+];
+
+// ---------- 渲染骨架 ----------
+function drawSkeleton(results){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!results.landmarks || !results.landmarks.length) return;
+  const lm = results.landmarks[0];
+
+  const fit = S.videoFit;
+  if(!fit){ return; }  // 尚未计算渲染区，跳过
+  // 归一化坐标 [0,1] → canvas 像素，映射到视频实际渲染区（含 letterbox 偏移）
+  const px = (i) => {
+    const k = lm[i];
+    // S.mirror 控制是否水平镜像骨架（匹配镜像自拍的底图）
+    const kx = S.mirror ? (1 - k.x) : k.x;
+    const x = fit.offX + kx * fit.fitW;
+    const y = fit.offY + k.y * fit.fitH;
+    return [x * fit.dpr, y * fit.dpr];
+  };
+
+  // 连线
+  ctx.strokeStyle = '#34d399';
+  ctx.lineWidth = 2 * fit.dpr;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for(const conn of PoseLandmarker.POSE_CONNECTIONS){
+    const p1 = px(conn.start), p2 = px(conn.end);
+    ctx.moveTo(p1[0], p1[1]);
+    ctx.lineTo(p2[0], p2[1]);
+  }
+  ctx.stroke();
+
+  // 脸部轮廓：单独用更细、更亮的线，避免与身体连接混在一起。
+  ctx.strokeStyle = '#80e0b5';
+  ctx.lineWidth = 1.5 * fit.dpr;
+  ctx.beginPath();
+  for(const [a,b] of FACE_CONNECTIONS){
+    if(!lm[a] || !lm[b]) continue;
+    const p1 = px(a), p2 = px(b);
+    ctx.moveTo(p1[0], p1[1]);
+    ctx.lineTo(p2[0], p2[1]);
+  }
+  ctx.stroke();
+
+  // 关键点：脸部点略小，鼻子/眼睛保持清晰但不遮挡画面。
+  for(let i=0;i<lm.length;i++){
+    const p = px(i);
+    ctx.fillStyle = i <= 10 ? '#d8f36a' : '#f3b45f';
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], (i <= 10 ? 2.2 : 3) * fit.dpr, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// ---------- 主循环 ----------
+async function loop(){
+  if(!S.running){ rafId=null; return; }
+  if(!poseLandmarker){ rafId=requestAnimationFrame(loop); return; }
+
+  let results = null;
+  if(S.mode==='camera'){
+    if(video.readyState >= 2){
+      results = poseLandmarker.detectForVideo(video, performance.now());
+    }
+  } else {
+    if(video.readyState >= 2 && video.currentTime !== lastVideoTime){
+      lastVideoTime = video.currentTime;
+      results = poseLandmarker.detectForVideo(video, performance.now());
+    }
+  }
+
+  if(results && results.landmarks && results.landmarks.length){
+    const ang = extractAngles(results.landmarks[0]);
+    const ev = evaluate(ang);
+    S.angles = ang;
+
+    // EMA 平滑主角度
+    if(ev.mainAngle!=null){
+      S.smoothAngle = S.smoothAngle==null ? ev.mainAngle : S.smoothAngle*0.7 + ev.mainAngle*0.3;
+    }
+
+    const ex = EXERCISES[S.exercise];
+
+    // 平板支撑：保持型，不计数，只算质量分和时长
+    if(ex.isHold){
+      S.metrics.startTime = S.metrics.startTime || performance.now();
+      // 质量分 = 直线度
+      const q = ev.holdQuality ?? 0;
+      S.metrics.qualitySum += q;
+      S.metrics.qualityCount++;
+      S.metrics.lastRepQuality = q;
+      // 卡路里按秒累计
+      const dt = 1/30; // 约30fps，每帧累加
+      S.metrics.calories += (ex.calPerSec || 0.15) * dt;
+      // 积分按时间
+      S.metrics.points = Math.round(S.metrics.calories * 10);
+
+      const issues = ex.checkIssues(ang);
+      renderIssues(issues);
+      renderMetrics();
+
+      // 反馈文案
+      let feedback, level;
+      if(ev.mainAngle==null){ feedback='未检测到身体'; level='off'; }
+      else if(q > 0.8){ feedback='动作标准，保持住！'; level='ok'; }
+      else if(q > 0.5){ feedback='注意身体保持直线'; level='warn'; }
+      else { feedback='身体塌陷，调整姿势'; level='bad'; }
+      el.feedback.textContent = feedback;
+      el.feedback.className = 'feedback '+level;
+      el.mState.textContent = '保持中';
+      el.mScore.textContent = Math.round(q*100);
+
+      drawSkeleton(results);
+      el.placeholder.classList.add('hidden');
+      rafId = requestAnimationFrame(loop);
+      return;
+    }
+
+    // 计数型动作
+    updateCounter(ev.downProb);
+
+    // 质量分：到位时根据纠错问题数量打分
+    let issues = ex.checkIssues(ang);
+    let quality = 1.0;
+    if(ev.mainAngle!=null){
+      // 基础质量：到位程度
+      const depthQ = S.inDown ? 1.0 : (0.5 + ev.downProb*0.5);
+      quality = Math.max(0.3, depthQ - issues.length*0.15);
+    }
+    S.metrics.qualitySum += quality;
+    S.metrics.qualityCount++;
+    S.metrics.lastRepQuality = quality;
+    S.metrics.startTime = S.metrics.startTime || performance.now();
+
+    renderIssues(issues);
+    renderMetrics();
+
+    // 反馈文案
+    let feedback, level;
+    if(ev.mainAngle==null){ feedback='未检测到关键点'; level='off'; }
+    else if(issues.length > 0){ feedback = issues[0]; level='bad'; }
+    else if(S.inDown){ feedback = ex.lowLabel + '，可以回位'; level='ok'; }
+    else if(S.phase==='up' && ev.downProb < 0.3){ feedback = '准备，' + (ex.useDist?'开始展开':'开始发力'); level='off'; }
+    else { feedback = '继续' + (ex.useDist?'展开':'向下'); level='warn'; }
+
+    // 更新 UI
+    el.repCount.textContent = S.repCount;
+    el.mAngle.textContent = ev.mainAngle!=null ? (ex.useDist ? ev.mainAngle.toFixed(2) : Math.round(ev.mainAngle)+'°') : '--';
+    el.mAngleLabel.textContent = ev.label||'--';
+    el.mState.textContent = S.inDown ? '到位' : (S.phase==='up'?'回位':'发力中');
+    el.mScore.textContent = Math.round(quality*100);
+    el.feedback.textContent = feedback;
+    el.feedback.className = 'feedback '+level;
+
+    drawSkeleton(results);
+    el.placeholder.classList.add('hidden');
+  } else {
+    el.feedback.textContent = '等待识别人体…';
+    el.feedback.className = 'feedback off';
+    el.mState.textContent = '待机';
+  }
+
+  renderMetrics();
+
+  // 状态面板
+  const ang = S.angles;
+  el.state.textContent =
+    `模式: ${S.mode}\n` +
+    `动作: ${EXERCISES[S.exercise]?.name || S.exercise}\n` +
+    `主角度(平滑): ${S.smoothAngle!=null?S.smoothAngle.toFixed(1):'--'}\n` +
+    `左膝: ${ang.leftKnee!=null?ang.leftKnee.toFixed(0):'--'}°  右膝: ${ang.rightKnee!=null?ang.rightKnee.toFixed(0):'--'}°\n` +
+    `左肘: ${ang.leftElbow!=null?ang.leftElbow.toFixed(0):'--'}°  右肘: ${ang.rightElbow!=null?ang.rightElbow.toFixed(0):'--'}°\n` +
+    `downProb: ${S.lastDownProb}\n` +
+    `phase: ${S.phase}  reps: ${S.repCount}  积分: ${S.metrics.points}  卡路里: ${S.metrics.calories.toFixed(1)}`;
+
+  rafId = requestAnimationFrame(loop);
+}
+
+// ---------- 渲染纠错反馈 ----------
+function renderIssues(issues){
+  if(issues?.length){
+    issues.forEach(issue => { if(!S.metrics.issues.includes(issue)) S.metrics.issues.push(issue); });
+    renderReportIssues();
+  }
+  if(!issues || issues.length===0){
+    el.issuesBox.style.display = 'none';
+    el.issues.innerHTML = '';
+    return;
+  }
+  el.issuesBox.style.display = 'block';
+  el.issues.innerHTML = issues.map(t => `<div class="issue"><span class="dot"></span>${t}</div>`).join('');
+}
+
+// ---------- 渲染指标 ----------
+function renderReportIssues(){
+  if(!S.metrics.issues.length){
+    el.reportIssues.innerHTML = '<div class="empty">完成一组训练后，这里会出现反馈。</div>';
+    return;
+  }
+  el.reportIssues.innerHTML = S.metrics.issues.map(issue => `<div class="report-row"><span>${issue}</span><strong>需关注</strong></div>`).join('');
+}
+
+function renderMetrics(){
+  const m = S.metrics;
+  // 时长
+  const elapsed = m.startTime ? (performance.now() - m.startTime)/1000 : 0;
+  const mm = String(Math.floor(elapsed/60)).padStart(2,'0');
+  const ss = String(Math.floor(elapsed%60)).padStart(2,'0');
+  el.mTime.textContent = `${mm}:${ss}`;
+  el.mPoints.textContent = m.points;
+  el.mCal.textContent = m.calories.toFixed(0);
+  el.mReps.textContent = m.totalReps;
+  // 平均质量
+  const avgQ = m.qualityCount>0 ? (m.qualitySum/m.qualityCount) : null;
+  el.mQuality.textContent = avgQ!=null ? Math.round(avgQ*100) : '--';
+  const quality = avgQ!=null ? Math.round(avgQ*100) : '--';
+  el.homePoints.textContent = m.points;
+  el.homeMinutes.textContent = `${mm}:${ss}`;
+  el.homeQuality.textContent = quality === '--' ? '--' : quality;
+  el.homeReps.textContent = m.totalReps;
+  el.homeCalories.textContent = m.calories.toFixed(0);
+  el.reportScore.textContent = quality;
+  el.reportReps.textContent = m.totalReps;
+  el.reportTime.textContent = `${mm}:${ss}`;
+  el.reportCal.textContent = m.calories.toFixed(0);
+  el.reportPoints.textContent = m.points;
+}
+
+const PAGE_META = {
+  home: ['', '把今天练成一个节奏。', '从一个动作开始，保持稳定，比追求完美更重要。'],
+  train: ['LIVE · 实时训练', '看见你的动作。', '模型会在本地分析姿态，并把下一步反馈给你。'],
+  library: ['MOVEMENT · 动作库', '找到适合今天的动作。', '每个动作都对应一组清晰的观察指标。'],
+  report: ['REFLECTION · 训练报告', '进步，藏在每一次回位里。', '回看质量、节奏和需要继续练习的细节。'],
+  settings: ['CONTROL · 设置', '把训练环境调成你的节奏。', '显示、阈值和调试信息都集中在这里。'],
+};
+function currentDayLabel(){
+  const day = new Intl.DateTimeFormat('zh-CN', {weekday:'long'}).format(new Date());
+  return `${day} · 训练日`;
+}
+function showPage(page){
+  const next = PAGE_META[page] ? page : 'home';
+  document.querySelectorAll('.page').forEach(node => node.classList.toggle('active', node.id === `page-${next}`));
+  document.querySelectorAll('[data-page]').forEach(node => node.classList.toggle('active', node.dataset.page === next));
+  const meta = PAGE_META[next];
+  el.pageEyebrow.textContent = next === 'home' ? currentDayLabel() : meta[0];
+  el.pageTitle.textContent = meta[1];
+  el.pageSubtitle.textContent = meta[2];
+  if(next === 'train'){
+    requestAnimationFrame(() => {
+      sizeCanvas();
+      if(poseLandmarker && !S.running && !video.srcObject && !video.src){
+        el.placeholder.textContent = '点击「开启相机」或「上传视频」开始';
+      }
+    });
+  }
+  renderMetrics();
+}
+function chooseExercise(exercise){
+  const btn = el.exSeg.querySelector(`[data-ex="${exercise}"]`);
+  if(!btn) return;
+  S.exercise = exercise;
+  S.repCount = 0;
+  S.inDown = false;
+  S.phase = 'idle';
+  el.exSeg.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+  log('切换到动作: ' + (EXERCISES[S.exercise]?.name || S.exercise), 'info');
+}
+
+// ---------- 初始化 ----------
+async function init(){
+  log('开始初始化 MediaPipe…', 'info');
+  try{
+    log('加载 FilesetResolver (WASM)…', 'info');
+    const vision = await FilesetResolver.forVisionTasks(
+      './wasm'
+    );
+    log('WASM 解析器加载完成 ✓', 'ok');
+
+    const common = {
+      runningMode:'VIDEO', numPoses:1,
+      minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5,
+    };
+
+    // 用 fetch 显式加载模型为 ArrayBuffer，绕开 MediaPipe 内部 URL 解析
+    log('fetch 本地模型文件 pose_landmarker_full.task…', 'info');
+    let modelBuf;
+    try{
+      const resp = await fetch('pose_landmarker_full.task');
+      log('fetch 响应状态: '+resp.status+' ('+resp.statusText+')', resp.ok?'ok':'err');
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      modelBuf = new Uint8Array(await resp.arrayBuffer());  // 必须是 Uint8Array，不能是裸 ArrayBuffer
+      log('模型已读入内存: '+(modelBuf.byteLength/1024/1024).toFixed(1)+'MB ✓', 'ok');
+    }catch(fetchErr){
+      log('fetch 模型失败: '+errStr(fetchErr), 'err');
+      throw fetchErr;
+    }
+
+    // 先试 GPU，失败回退 CPU
+    try{
+      log('尝试 GPU delegate…', 'info');
+      poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+        ...common,
+        baseOptions:{ modelAssetBuffer: modelBuf, delegate:'GPU' }
+      });
+      log('GPU 模型加载成功 ✓', 'ok');
+    }catch(gpuErr){
+      log('GPU 失败，回退 CPU… ('+errStr(gpuErr)+')', 'info');
+      try{
+        poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+          ...common,
+          baseOptions:{ modelAssetBuffer: modelBuf, delegate:'CPU' }
+        });
+        log('CPU 模型加载成功 ✓', 'ok');
+      }catch(cpuErr){
+        log('CPU 也失败: '+errStr(cpuErr), 'err');
+        throw cpuErr;
+      }
+    }
+
+    log('模型已就绪，请进入实时训练后开启相机。', 'ok');
+  }catch(e){
+    log('初始化失败: '+errStr(e), 'err');
+    el.placeholder.textContent='模型加载失败: '+errStr(e);
+    el.placeholder.classList.remove('hidden');
+  }
+}
+
+function errStr(e){
+  if(!e) return 'unknown(null)';
+  // Event / ErrorEvent 对象：打印 type 和所有关键字段
+  if(typeof Event !== 'undefined' && e instanceof Event){
+    const parts = ['Event:'+e.type];
+    if(e.message) parts.push('message='+e.message);
+    if(e.target && e.target.src) parts.push('src='+e.target.src);
+    if(e.target && e.target.tagName) parts.push('tag='+e.target.tagName);
+    if(e.filename) parts.push('file='+e.filename);
+    if(e.lineno) parts.push('line='+e.lineno);
+    if(e.error) parts.push('inner='+errStr(e.error));
+    return parts.join(' | ');
+  }
+  // 普通 Error
+  if(e instanceof Error) return e.name+': '+(e.message||'')+' '+(e.stack?e.stack.split('\n').slice(0,3).join(' ← '):'');
+  // 其他
+  return String(e);
+}
+
+// ---------- 相机/视频 ----------
+async function startCamera(){
+  stopStream();
+  S.mode='camera';
+  log('请求摄像头权限…', 'info');
+  try{
+    if(!navigator.mediaDevices?.getUserMedia){
+      throw new Error('当前页面没有可用的摄像头接口，请通过 localhost 或 HTTPS 打开');
+    }
+    const constraints = {video:{width:{ideal:1280},height:{ideal:720},facingMode:'user'},audio:false};
+    try{
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    }catch(firstError){
+      // 某些浏览器不接受高级视频约束，退回最小视频约束再请求一次。
+      if(firstError.name !== 'OverconstrainedError' && firstError.name !== 'NotSupportedError') throw firstError;
+      log('摄像头高级参数不兼容，使用基础参数重试…', 'info');
+      stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    }
+    video.srcObject = stream;
+    await video.play();
+    log('摄像头已开启 ✓', 'ok');
+    // 等视频元数据就绪再算尺寸（相机也需要 videoWidth/Height）
+    if(video.videoWidth) sizeCanvas();
+    else video.addEventListener('loadedmetadata', sizeCanvas, {once:true});
+    S.running=true;
+    el.placeholder.classList.add('hidden');
+    if(!rafId) rafId=requestAnimationFrame(loop);
+    setActive(el.btnCam, el.btnStop);
+  }catch(e){
+    log('摄像头失败: '+e.name+' - '+e.message, 'err');
+    el.placeholder.textContent = e.name === 'NotAllowedError'
+      ? '相机权限被阻止，请允许浏览器访问相机后重试'
+      : e.name === 'NotFoundError'
+        ? '没有找到摄像头，可以改用上传视频'
+        : '相机暂时不可用，可以改用上传视频或点击重试';
+    el.placeholder.classList.remove('hidden');
+  }
+}
+
+function stopStream(){
+  S.running=false;
+  if(rafId){ cancelAnimationFrame(rafId); rafId=null; }
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; }
+}
+
+function setActive(on, off){
+  on.classList.add('active'); if(off) off.classList.remove('active');
+}
+
+function sizeCanvas(){
+  const r = camWrap.getBoundingClientRect();
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if(!vw || !vh){
+    // 视频未就绪，先用容器尺寸
+    canvas.width = r.width; canvas.height = r.height;
+    return;
+  }
+  // 外层画布保持由 CSS 决定的工作区尺寸，视频使用 contain 完整显示。
+  // Canvas 与容器使用同一尺寸，避免竖屏视频把训练列压成窄条。
+  const dispW = r.width;
+  const dispH = r.height;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(dispW * dpr));
+  canvas.height = Math.max(1, Math.round(dispH * dpr));
+  canvas.style.width = dispW + 'px';
+  canvas.style.height = dispH + 'px';
+
+  // 计算 object-fit:contain 在工作区内的实际渲染区（letterbox 偏移）。
+  const fitScale = Math.min(dispW / vw, dispH / vh);
+  const fitW = vw * fitScale, fitH = vh * fitScale;
+  const offX = (dispW - fitW) / 2, offY = (dispH - fitH) / 2;
+  S.videoFit = { fitW, fitH, offX, offY, dispW, dispH, dpr };
+}
+
+// ---------- 事件 ----------
+el.btnCam.onclick = startCamera;
+el.btnStop.onclick = ()=>{ stopStream(); el.placeholder.classList.remove('hidden'); el.placeholder.textContent='已停止'; setActive(el.btnStop, el.btnCam); };
+
+// 上传视频按钮：用 JS 绑定（替代内联 onclick，避免模块作用域问题）
+el.btnFile.addEventListener('click', ()=>{
+  log('点击「上传视频」按钮', 'info');
+  el.fileInput.click();
+});
+
+// 页面导航与动作切换
+ document.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => showPage(button.dataset.page)));
+ document.querySelectorAll('[data-go]').forEach(button => button.addEventListener('click', () => showPage(button.dataset.go)));
+ document.querySelectorAll('[data-exercise-go]').forEach(button => button.addEventListener('click', () => { chooseExercise(button.dataset.exerciseGo); showPage('train'); }));
+el.exSeg.addEventListener('click', (e)=>{
+  const btn = e.target.closest('button[data-ex]');
+  if(btn) chooseExercise(btn.dataset.ex);
+});
+
+el.btnDebug.addEventListener('click', () => el.debugDrawer.classList.add('open'));
+el.closeDebug.addEventListener('click', () => el.debugDrawer.classList.remove('open'));
+el.debugDrawer.addEventListener('click', e => { if(e.target === el.debugDrawer) el.debugDrawer.classList.remove('open'); });
+
+// 阈值滑块
+function bindSlider(s, v, key, fmt){
+  s.addEventListener('input', ()=>{
+    const val = parseInt(s.value,10);
+    S.thr[key] = key==='enter'||key==='exit' ? val/100 : val;
+    v.textContent = (key==='enter'||key==='exit' ? (val/100).toFixed(2) : val+'°');
+  });
+}
+bindSlider(el.sLow, el.sLowV, 'low');
+bindSlider(el.sHigh, el.sHighV, 'high');
+bindSlider(el.sEnter, el.sEnterV, 'enter');
+bindSlider(el.sExit, el.sExitV, 'exit');
+
+// 上传视频
+el.fileInput.addEventListener('change', (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  log('已选择文件: '+file.name+' ('+(file.size/1024/1024).toFixed(1)+'MB)', 'info');
+  stopStream();
+  S.mode='video';
+  lastVideoTime=-1;
+  const url = URL.createObjectURL(file);
+  video.srcObject = null;
+  video.src = url;
+  video.muted = true;
+  log('加载视频元数据…', 'info');
+  video.load();
+  video.addEventListener('loadedmetadata', ()=>{
+    log('视频就绪: '+video.videoWidth+'x'+video.videoHeight+' 时长'+video.duration.toFixed(1)+'s ✓', 'ok');
+  });
+  video.addEventListener('error', (ev)=>{
+    log('视频加载错误 code='+video.error?.code+' '+video.error?.message, 'err');
+  });
+  video.addEventListener('canplay', function onReady(){
+    video.removeEventListener('canplay', onReady);
+    log('视频 canplay，启动推理 ✓', 'ok');
+    sizeCanvas();
+    S.running=true;
+    el.placeholder.classList.add('hidden');
+    if(!rafId) rafId=requestAnimationFrame(loop);
+    setActive(el.btnStop, el.btnCam);
+  });
+  video.play().catch(e=>{
+    log('视频播放失败: '+e.message, 'err');
+    el.placeholder.textContent='视频播放失败：'+e.message;
+    el.placeholder.classList.remove('hidden');
+  });
+});
+
+// 重播 & 自动重播
+let autoLoop = false;
+function replayVideo(){
+  if(S.mode !== 'video'){ log('当前不是视频模式，无法重播', 'info'); return; }
+  log('重播视频', 'info');
+  S.repCount = 0;       // 重播时重置计数
+  S.inDown = false;
+  S.phase = 'idle';
+  lastVideoTime = -1;
+  video.currentTime = 0;
+  video.play().catch(e=>{ log('重播失败: '+e.message, 'err'); });
+}
+
+// 视频播放结束
+video.addEventListener('ended', ()=>{
+  log('视频播放结束', 'info');
+  if(autoLoop){
+    log('自动重播…', 'info');
+    replayVideo();
+  } else {
+    S.running = false;
+    el.feedback.textContent = '播放结束，点「重播」再来一次';
+    el.feedback.className = 'feedback off';
+    el.mState.textContent = '结束';
+  }
+});
+
+el.btnReplay.addEventListener('click', ()=>{
+  replayVideo();
+  if(!S.running){ S.running=true; if(!rafId) rafId=requestAnimationFrame(loop); }
+});
+
+el.btnLoop.addEventListener('click', ()=>{
+  autoLoop = !autoLoop;
+  el.btnLoop.classList.toggle('active', autoLoop);
+  log('自动重播: ' + (autoLoop?'开':'关'), 'info');
+});
+
+// 整体镜像：底图(video)和骨架一起翻转，两者始终保持贴合，只决定「整体视角」
+function applyMirror(){
+  const on = S.mirror;
+  camWrap.classList.toggle('flip', on);
+  el.btnMirror.classList.toggle('active', on);
+  el.btnMirror.textContent = on ? '整体镜像：开' : '整体镜像：关';
+  el.settingMirror.classList.toggle('on', on);
+}
+function toggleMirror(){
+  S.mirror = !S.mirror;
+  applyMirror();
+  log('整体镜像: ' + (S.mirror?'开（底图+骨架一起翻，正常视角）':'关（自拍视角）'), 'info');
+}
+el.btnMirror.addEventListener('click', toggleMirror);
+el.settingMirror.addEventListener('click', toggleMirror);
+el.settingLoop.addEventListener('click', () => {
+  autoLoop = !autoLoop;
+  el.settingLoop.classList.toggle('on', autoLoop);
+  el.btnLoop.classList.toggle('active', autoLoop);
+  log('自动重播: ' + (autoLoop?'开':'关'), 'info');
+});
+applyMirror();
+
+window.addEventListener('resize', sizeCanvas);
+window.S = S;  // 调试用：暴露状态到全局
+window.drawSkeleton = drawSkeleton;
+window.sizeCanvas = sizeCanvas;
+window.poseLandmarker = ()=> poseLandmarker;  // 调试用
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Minimal MediaPipe Test</title></head>
+<body>
+<h3>Minimal MediaPipe 加载测试</h3>
+<pre id="out">开始…</pre>
+<script type="module">
+import { PoseLandmarker, FilesetResolver } from './vision_bundle.mjs';
+const out = document.getElementById('out');
+function log(m){ out.textContent += '\n' + m; console.log(m); }
+function errStr(e){
+  if(e && typeof Event !== 'undefined' && e instanceof Event){
+    let s = 'Event:'+e.type;
+    if(e.message) s+=' message='+e.message;
+    if(e.target && e.target.src) s+=' src='+e.target.src;
+    if(e.error) s+=' inner='+String(e.error);
+    return s;
+  }
+  if(e instanceof Error) return e.name+': '+e.message+' '+e.stack;
+  return String(e);
+}
+
+try{
+  log('[1] 加载 FilesetResolver…');
+  const vision = await FilesetResolver.forVisionTasks('./wasm');
+  log('[1] OK ✓');
+
+  log('[2] fetch 模型…');
+  const resp = await fetch('pose_landmarker_full.task');
+  log('[2] fetch status='+resp.status+' size='+(await resp.clone().arrayBuffer()).byteLength);
+  const buf = new Uint8Array(await resp.arrayBuffer());
+  log('[2] OK ✓ 读入 '+buf.byteLength+' 字节');
+
+  log('[3] createFromOptions (CPU)…');
+  const lm = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions:{ modelAssetBuffer: buf, delegate:'CPU' },
+    runningMode:'VIDEO', numPoses:1,
+    minPoseDetectionConfidence:0.5, minPosePresenceConfidence:0.5, minTrackingConfidence:0.5,
+  });
+  log('[3] CPU 成功 ✓✓✓');
+}catch(e){
+  log('[FAIL] ' + errStr(e));
+}
+</script>
+</body>
+</html>

@@ -14,7 +14,7 @@ The native code lives under `src/` and is split into deep modules:
 - `pose_source`: pluggable frame sources, including text replay.
 - `pose_backend`: pluggable native inference backend seam.
 
-The browser prototype under `prototype/` remains the working MediaPipe WASM demo. The native C++ build deliberately has no hidden SDK dependency: a MediaPipe Tasks or ONNX backend is added as an adapter implementing `PoseBackend`.
+The browser prototype under `prototype/` remains the working MediaPipe WASM camera/demo layer. `prototype/cadence-wasm-bridge.js` is the thin browser adapter for a C++-compiled WebAssembly module: JavaScript supplies the 33 MediaPipe landmarks, while C++ owns movement rules, repetition counting, quality, points, calories, and summaries. The native C++ build deliberately has no hidden SDK dependency: a MediaPipe Tasks or ONNX backend is added as an adapter implementing `PoseBackend`.
 
 ## Build and test
 

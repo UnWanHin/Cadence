@@ -136,6 +136,13 @@ object LanRoom {
 
     fun hostingPort(): Int? = server?.takeIf { it.isRunning }?.port()
 
+    /** The URL to show and share: the most reachable LAN address, not loopback. */
+    fun bestLanUrl(): String? {
+        val port = hostingPort() ?: return null
+        val address = RoomHttpServer.lanAddresses().firstOrNull() ?: return null
+        return "http://$address:$port/"
+    }
+
     fun hostingUrls(): List<String> {
         val port = hostingPort() ?: return emptyList()
         return RoomHttpServer.lanAddresses().map { "http://$it:$port/" }

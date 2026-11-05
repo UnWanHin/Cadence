@@ -221,20 +221,26 @@ public final class RoomHttpServer {
         return "application/octet-stream";
     }
 
-    /** IPv4 addresses other devices on the same network can reach. */
+    /**
+     * IPv4 addresses other devices on the same network can reach, best first.
+     * Ordering matters: the first entry is what the UI shows and what the QR
+     * code carries, and a phone usually has several candidates.
+     */
     public static List<String> lanAddresses() {
-        List<String> out = new ArrayList<>();
+        List<LanAddresses.Entry> entries = new ArrayList<>();
         try {
             for (NetworkInterface ni : Collections.list(NetworkInterface.getNetworkInterfaces())) {
                 if (!ni.isUp() || ni.isLoopback()) continue;
                 for (InetAddress address : Collections.list(ni.getInetAddresses())) {
-                    if (address.getAddress().length == 4) out.add(address.getHostAddress());
+                    if (address.getAddress().length == 4) {
+                        entries.add(new LanAddresses.Entry(ni.getName(), address.getHostAddress()));
+                    }
                 }
             }
         } catch (IOException ignored) {
             // Best effort only.
         }
-        return out;
+        return LanAddresses.ordered(entries);
     }
 
     // ---- tiny HTTP layer --------------------------------------------------

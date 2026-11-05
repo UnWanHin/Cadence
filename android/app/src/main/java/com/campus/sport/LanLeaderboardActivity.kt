@@ -167,11 +167,13 @@ class LanLeaderboardActivity : AppCompatActivity() {
                 // Hosting is authoritative for this device: join it right away so
                 // the board and chat work without a second manual step.
                 val port = LanRoom.hostingPort() ?: LanRoom.DEFAULT_PORT
-                val selfAddress = "127.0.0.1:$port"
-                roomInput.setText(selfAddress)
-                joinRoom()
+                // Poll our own server over loopback: it keeps working even if the
+                // Wi-Fi address changes. The address shown and shared is the LAN
+                // one, because 127.0.0.1 is useless to anyone else.
+                joinAddress("127.0.0.1:$port")
+                val url = LanRoom.bestLanUrl() ?: LanRoom.hostingUrls().firstOrNull()
+                roomInput.setText(url?.removePrefix("http://")?.trimEnd('/') ?: "127.0.0.1:$port")
                 updateStatus()
-                val url = LanRoom.hostingUrls().firstOrNull()
                 Toast.makeText(
                     this@LanLeaderboardActivity,
                     if (url != null) getString(R.string.room_host_started_url, url)
@@ -199,6 +201,11 @@ class LanLeaderboardActivity : AppCompatActivity() {
             Toast.makeText(this, R.string.room_address_required, Toast.LENGTH_SHORT).show()
             return
         }
+        joinAddress(address)
+    }
+
+    /** Joins [address]; the transport may differ from the address shown. */
+    private fun joinAddress(address: String) {
         val normalized = if (address.startsWith("http")) address else "http://$address"
         val room = normalized.trimEnd('/')
         remoteRoom = room
@@ -215,8 +222,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
                     true
                 }.getOrDefault(false)
             }
-            statusText.text = if (ok) getString(R.string.room_joined, room)
-            else getString(R.string.room_join_failed, room)
+            if (!ok) statusText.text = getString(R.string.room_join_failed, room) else updateStatus()
             refreshBoard()
             renderChat()
         }
@@ -508,9 +514,9 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private fun updateStatus() {
         statusText.text = when {
             LanRoom.isHosting() -> {
-                val url = LanRoom.hostingUrls().firstOrNull()
+                val url = LanRoom.bestLanUrl() ?: LanRoom.hostingUrls().firstOrNull()
                 if (url != null) getString(R.string.room_hosting, url)
-                else getString(R.string.room_hosting_no_address, LanRoom.DEFAULT_PORT)
+                else getString(R.string.room_hosting_no_address, LanRoom.hostingPort() ?: LanRoom.DEFAULT_PORT)
             }
             remoteRoom != null -> getString(R.string.room_joined, remoteRoom)
             else -> getString(R.string.room_idle)

@@ -32,6 +32,7 @@ import com.google.mediapipe.framework.image.BitmapImageBuilder
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.vision.core.RunningMode
 import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarker
+import com.campus.sport.lan.LanRoom
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -656,6 +657,22 @@ class MainActivity : AppCompatActivity() {
         cameraHintText.text = currentExercise.cameraHint
         videoProgressMs = 0L
         trainingSource = TrainingSource.CAMERA
+
+        // Store the finished session in this device's room log. Ranking is
+        // recomputed from events, so the record must be the raw result rather
+        // than a precomputed score.
+        val exerciseCode = currentExercise.name.lowercase()
+        LanRoom.username = runCatching {
+            getSharedPreferences("profile", MODE_PRIVATE).getString("username", null)
+        }.getOrNull() ?: LanRoom.username
+        LanRoom.record(
+            context = this,
+            exercise = exerciseCode,
+            repetitions = summary.repetitions,
+            durationSeconds = elapsed.roundToInt(),
+            quality = summary.averageQuality.toDouble(),
+            points = summary.points,
+        )
     }
 
     /**

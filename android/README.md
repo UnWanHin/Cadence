@@ -50,18 +50,31 @@ android/
 
 需要：
 
-- JDK 25（项目按当前工程环境验证）
+- JDK 21（**必须带 javac 的完整 JDK**）。实测：只装 JRE 时 Gradle 报
+  `does not provide the required capabilities: [JAVA_COMPILER]`；JDK 27 早期版本会在
+  `JdkImageTransform` 的 jlink 步骤失败。JDK 21 构建通过。
 - Android SDK：command-line tools、platform 35、build-tools、platform-tools
 - Android NDK：`27.0.12077973`
 - CMake：`3.22.1`（通过 SDK Manager 安装）
 - Gradle 9.0
 
+`android/local.properties` 写入本机 SDK 路径（该文件不入库）：
+
+```properties
+sdk.dir=/home/<user>/android-sdk
+```
+
 构建：
 
-```powershell
-cd E:\软工\android
-gradle wrapper
-.\gradlew assembleDebug
+```bash
+cd android
+ANDROID_HOME=$HOME/android-sdk JAVA_HOME=$HOME/jdk/jdk-21.0.13+9 bash ./gradlew :app:assembleDebug
+```
+
+已验证通过，产物：
+
+```text
+android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 APK 输出：

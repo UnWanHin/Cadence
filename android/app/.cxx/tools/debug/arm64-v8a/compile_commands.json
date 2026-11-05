@@ -1,0 +1,37 @@
+[
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/jni_bridge.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/jni_bridge.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/jni_bridge.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/geometry.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/geometry.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/geometry.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/pose_features.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/pose_features.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/pose_features.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/exercise_rules.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/exercise_rules.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/exercise_rules.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/repetition_counter.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/repetition_counter.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/repetition_counter.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/workout_session.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/workout_session.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/workout_session.cpp"
+},
+{
+  "directory": "/home/hiraeth/Documents/Github/Projects/Cadence/android/app/.cxx/Debug/73414y1y/arm64-v8a",
+  "command": "/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++ --target=aarch64-none-linux-android26 --sysroot=/home/hiraeth/android-sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/linux-x86_64/sysroot -Dcadence_EXPORTS -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src -I/home/hiraeth/Documents/Github/Projects/Cadence/android/app/src/main/cpp/../../../../../src/cadence -g -DANDROID -fdata-sections -ffunction-sections -funwind-tables -fstack-protector-strong -no-canonical-prefixes -D_FORTIFY_SOURCE=2 -Wformat -Werror=format-security   -fno-limit-debug-info  -fPIC -Wall -Wextra -Wpedantic -std=c++17 -o CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/wasm_api.cpp.o -c /home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/wasm_api.cpp",
+  "file": "/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/wasm_api.cpp"
+}
+]

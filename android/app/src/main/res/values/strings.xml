@@ -49,4 +49,28 @@
     <string name="metric_natural">自然时长</string>
     <string name="hint">保持单人、全身入镜；深蹲/俯卧撑/弓步蹲/平板支撑建议左侧身体朝向镜头。画面只在设备端处理。</string>
     <string name="camera_permission_rationale">需要摄像头权限来识别动作；视频不会上传。</string>
+
+    <string name="board_title">局域网排行榜</string>
+    <string name="board_empty">还没有可排名的记录</string>
+    <string name="board_row">%1$d. %2$s · %3$d 分 · %4$d 次 · %5$d 秒</string>
+    <string name="room_idle">未加入房间</string>
+    <string name="room_host">开房间</string>
+    <string name="room_join">加入房间</string>
+    <string name="room_address_hint">房间地址，例如 192.168.1.20:8787</string>
+    <string name="room_address_required">请先填写房间地址</string>
+    <string name="room_hosting">正在开房间：%1$s</string>
+    <string name="room_hosting_no_address">正在开房间，端口 %1$d（未检测到局域网地址）</string>
+    <string name="room_host_started">房间已开启，端口 %1$d</string>
+    <string name="room_host_stopped">房间已关闭</string>
+    <string name="room_host_failed">开房间失败：%1$s</string>
+    <string name="room_joining">正在加入 %1$s</string>
+    <string name="room_joined">已加入 %1$s</string>
+    <string name="room_join_failed">无法连接 %1$s</string>
+    <string name="chat_title">局域网聊天</string>
+    <string name="chat_empty">加入房间后可以聊天</string>
+    <string name="chat_hint">输入消息</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_room_required">请先加入一个房间</string>
+    <string name="chat_send_failed">消息发送失败</string>
+    <string name="home_discover">局域网</string>
 </resources>

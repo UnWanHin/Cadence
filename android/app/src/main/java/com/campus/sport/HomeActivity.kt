@@ -20,7 +20,7 @@ class HomeActivity : AppCompatActivity() {
             showManual()
         }
         findViewById<View>(R.id.navDiscover).setOnClickListener {
-            showComingSoon()
+            startActivity(Intent(this, LanLeaderboardActivity::class.java))
         }
         findViewById<View>(R.id.navProfile).setOnClickListener {
             showComingSoon()

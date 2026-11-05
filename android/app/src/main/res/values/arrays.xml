@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="exercises">
+        <item>深蹲</item>
+        <item>俯卧撑</item>
+        <item>弓步蹲</item>
+        <item>平板支撑</item>
+        <item>开合跳</item>
+    </string-array>
+</resources>

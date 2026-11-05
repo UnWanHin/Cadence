@@ -1,0 +1,886 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>校园智能运动平台 · 模型对齐版</title>
+<style>
+  *{box-sizing:border-box}
+  html{height:100%;scroll-behavior:smooth}
+  body{margin:0;min-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#edf3f2;color:#183d38;font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif}
+  main{max-width:980px;margin:28px auto;padding:0 18px 40px}
+  section{background:#fff;border-radius:16px;margin:14px 0;padding:20px;box-shadow:0 6px 20px rgba(20,94,80,.06)}
+  h1,h2{margin:0 0 10px}
+  h1{font-size:26px}
+  h2{font-size:19px}
+  button,select,input{font:inherit;padding:7px;margin:3px;border:1px solid #a8c2ba;border-radius:7px;background:#fff}
+  button{background:#145e50;color:#fff;cursor:pointer}
+  button:disabled{background:#9fb8b1;cursor:not-allowed}
+  button.secondary{background:#e7f1ee;color:#145e50}
+  button.danger{background:#a33b32}
+  label{display:inline-block;margin:3px 8px 3px 0}
+  video{display:block;width:100%;max-height:360px;background:#0b1011;border-radius:12px;object-fit:contain}
+  video.mirror{transform:scaleX(-1)}
+  output{display:block;font-size:18px;font-weight:700;margin:10px 0}
+  .hint{color:#52736c;font-size:14px}
+  .metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px;margin:12px 0}
+  .metric{background:#f2f8f6;border-radius:10px;padding:8px;text-align:center}
+  .metric b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .metric span{font-size:11px;color:#52736c}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .row>div{flex:1 1 300px;min-width:280px}
+  .video-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+  .video-tools input[type=file]{display:none}
+  .file-meta{color:#52736c;font-size:13px;margin:6px 0 0;word-break:break-all}
+  .video-progress{color:#52736c;font-size:13px;font-variant-numeric:tabular-nums;margin-top:4px}
+  .library-title{font-size:14px;margin:16px 0 4px;color:#183d38}
+  .video-library{display:grid;gap:6px;margin-top:6px}
+  .video-library .item{display:flex;gap:8px;align-items:center;justify-content:space-between;background:#f2f8f6;border-radius:9px;padding:8px 10px;font-size:13px}
+  .video-library .meta{color:#52736c;font-size:12px;margin-top:1px;word-break:break-all}
+  .video-library .actions{display:flex;gap:6px;flex-shrink:0}
+  .video-library .actions button{padding:4px 8px;font-size:12px;margin:0}
+  .history-item{display:flex;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid #e2ece9;padding:7px 0;font-size:14px}
+  .history-item:last-child{border-bottom:0}
+  .tag{display:inline-block;background:#e7f1ee;color:#145e50;border-radius:999px;padding:1px 8px;font-size:12px;margin-left:4px}
+  .feedback{background:#f2f8f6;border-left:4px solid #145e50;padding:8px 10px;border-radius:6px;font-size:14px;margin-top:8px}
+  .empty{color:#52736c;font-size:14px}
+  .board{font-size:15px}
+  .board div{padding:3px 0}
+  @media(max-width:720px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<main>
+  <h1>校园智能运动平台</h1>
+  <p class="hint">动作判定与积分由 仓库根目录 <code>src/</code> 的 C++ 核心编译成 WebAssembly 后计算：深蹲、俯卧撑、弓步蹲、平板支撑、开合跳。摄像头画面与上传视频只在设备端处理。本页仍是本地演示，未连接数据库/后端；接口契约见 <code>database/API.md</code>。</p>
+
+  <section>
+    <h2>开始训练</h2>
+    <div class="row">
+      <div>
+        <label>本机档案 <input id="who" maxlength="20" value="同学A"></label>
+        <label>动作
+          <select id="kind"></select>
+        </label>
+        <p id="exInfo" class="hint"></p>
+        <button id="cam">同意并开始摄像头训练</button>
+        <button id="demo" class="secondary">离线演示</button>
+        <button id="video" class="secondary">上传视频分析</button>
+        <button id="pause" class="secondary" disabled>暂停</button>
+        <button id="end" class="danger" disabled>结束并保存</button>
+        <input id="videoFile" type="file" accept="video/*" hidden>
+        <p id="videoInfo" class="file-meta">未选择视频。支持浏览器可解码的 mp4/webm/mov，分析只在本机进行。</p>
+      </div>
+      <div>
+        <video id="vid" muted playsinline></video>
+      </div>
+    </div>
+    <output id="msg">准备开始</output>
+    <div class="metrics">
+      <div class="metric"><b id="mReps">0</b><span id="mRepsLabel">有效次数</span></div>
+      <div class="metric"><b id="mQuality">--</b><span>质量分</span></div>
+      <div class="metric"><b id="mPoints">0</b><span id="mPointsLabel">预计积分</span></div>
+      <div class="metric"><b id="mCal">0.0</b><span>卡路里</span></div>
+      <div class="metric"><b id="mActive">0:00</b><span>有效运动时长</span></div>
+      <div class="metric"><b id="mNatural">0:00</b><span>自然时长</span></div>
+    </div>
+    <div id="feedback" class="feedback">选择动作后开始；建议左侧身体朝向镜头。</div>
+  </section>
+
+  <section>
+    <h2>视频回放与画面控制</h2>
+    <p class="hint">上传视频后会使用 MediaPipe + C++ WASM 逐帧分析。可以用下面的接口重播、自动循环或镜像画面；页面内容变长时可直接上下滚动查看。</p>
+    <div class="video-tools">
+      <button id="replay" class="secondary" disabled>重播视频</button>
+      <button id="autoReplay" class="secondary">自动重播：关</button>
+      <button id="mirror" class="secondary">镜像画面：关</button>
+    </div>
+    <div id="videoTime" class="video-progress">0:00 / 0:00</div>
+    <h3 class="library-title">局域网视频库</h3>
+    <div id="videoLibrary" class="video-library"><span class="empty">正在检查局域网视频库…</span></div>
+  </section>
+
+  <section>
+    <h2>我的运动记录</h2>
+    <label><input id="pub" type="checkbox"> 以档案昵称加入本机周榜</label>
+    <p class="hint">记录仅保存在当前浏览器；演示数据标为“演示”，不计入周榜。</p>
+    <div id="hist"></div>
+  </section>
+
+  <section>
+    <h2>本周积分榜</h2>
+    <div id="board" class="board"></div>
+  </section>
+</main>
+
+<script src="core.js"></script>
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const { EXERCISES, ORDER, day, week, formatDuration } = Core;
+const STORE = 'campus-model-v1';
+const DAILY_CAP = 600;
+const SESSION_LIMIT_MS = 20 * 60 * 1000;
+const API_BASE = (new URLSearchParams(location.search).get('api') || '/api/v1').replace(/\/$/, '');
+
+function apiUrl(path) {
+  return API_BASE + path;
+}
+
+let data = load();
+let run = null;
+let model = null;
+let stream = null;
+let raf = 0;
+let cadenceModulePromise = null;
+let videoUrl = null;
+let videoFile = null;
+let videoFileName = '';
+let videoAssetId = null;
+let videoUploadPromise = null;
+let videoSelectionId = 0;
+let autoReplay = false;
+let mirrored = false;
+
+function loadCadenceModule() {
+  if (!cadenceModulePromise) {
+    cadenceModulePromise = import('./cadence-wasm-bridge.js');
+  }
+  return cadenceModulePromise;
+}
+
+function load() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE) || 'null');
+    if (raw && Array.isArray(raw.rows)) return { rows: raw.rows, opt: raw.opt || {} };
+  } catch (_) { /* ignore */ }
+  return { rows: [], opt: {} };
+}
+function save() {
+  try { localStorage.setItem(STORE, JSON.stringify(data)); return true; }
+  catch (_) { return false; }
+}
+function name() {
+  return $('who').value.trim() || '同学A';
+}
+function exercise() {
+  return EXERCISES[$('kind').value] || EXERCISES.squat;
+}
+function todayPoints(n, t = Date.now()) {
+  return data.rows
+    .filter((r) => r.n === n && !r.demo && day(r.t) === day(t))
+    .reduce((sum, r) => sum + (Number(r.pts) || 0), 0);
+}
+function showExercise() {
+  const ex = exercise();
+  const score = ex.type === 'hold'
+    ? `每秒 floor(运动秒数 × 0.15 × 10) 分，卡路里 0.15/秒`
+    : `每次 floor(10 × 质量分) 分，卡路里 ${ex.caloriesPerRep}/次`;
+  $('exInfo').innerHTML = `<b>${ex.name}</b>：${ex.description}<br>机位：${ex.cameraHint}<br>积分：${score}`;
+  $('mRepsLabel').textContent = ex.type === 'hold' ? '保持时长' : '有效次数';
+  if (!run) $('mReps').textContent = ex.type === 'hold' ? '0:00' : '0';
+}
+function drawHistory() {
+  const n = name();
+  $('pub').checked = data.opt['u:' + n] === true;
+  const box = $('hist');
+  box.replaceChildren();
+  const rows = data.rows.filter((r) => r.n === n).slice().reverse();
+  if (!rows.length) {
+    box.textContent = '暂无记录';
+    return;
+  }
+  for (const r of rows) {
+    const ex = EXERCISES[r.exercise];
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    const text = document.createElement('span');
+    const metric = ex && ex.type === 'hold'
+      ? `保持 ${formatDuration(r.activeMs || 0)}`
+      : `${r.reps || 0} 次`;
+    const source = r.demo ? '演示' : r.source === 'video' ? '视频' : r.source === 'camera' ? '摄像头' : '';
+    text.innerHTML = `${new Date(r.t).toLocaleString()} · ${ex ? ex.name : r.exercise} · ${metric} · 质量 ${r.quality || 0} · +${r.pts || 0} 分`
+      + (source ? ` <span class="tag">${source}</span>` : '');
+    const del = document.createElement('button');
+    del.className = 'secondary';
+    del.textContent = '删除';
+    del.onclick = () => {
+      if (!confirm('删除本条记录及其积分？')) return;
+      data.rows = data.rows.filter((x) => x.id !== r.id);
+      save();
+      drawHistory();
+      drawBoard();
+    };
+    item.append(text, del);
+    box.append(item);
+  }
+}
+function drawBoard() {
+  const now = Date.now();
+  const sums = new Map();
+  for (const r of data.rows) {
+    if (r.demo || !data.opt['u:' + r.n] || week(r.t) !== week(now)) continue;
+    sums.set(r.n, (sums.get(r.n) || 0) + (Number(r.pts) || 0));
+  }
+  const rows = [...sums].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const board = $('board');
+  board.replaceChildren();
+  if (!rows.length) {
+    board.textContent = '暂无公开积分';
+    return;
+  }
+  let rank = 0;
+  let last = null;
+  rows.forEach(([n, v], i) => {
+    if (v !== last) rank = i + 1;
+    last = v;
+    const line = document.createElement('div');
+    line.textContent = `${rank}. ${n} ${v} 分`;
+    board.append(line);
+  });
+}
+function draw() {
+  showExercise();
+  drawHistory();
+  drawBoard();
+}
+function lock(v) {
+  for (const id of ['who', 'kind', 'cam', 'demo', 'video']) $(id).disabled = v;
+  $('pause').disabled = !v;
+  $('end').disabled = !v;
+  $('replay').disabled = v || !videoUrl;
+  if (!v) $('pause').textContent = '暂停';
+}
+function releaseCamera() {
+  if (stream) {
+    stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+  if ($('vid')) $('vid').srcObject = null;
+}
+function detachVideoElement() {
+  const vid = $('vid');
+  vid.pause();
+  vid.srcObject = null;
+  vid.removeAttribute('src');
+  vid.load();
+  vid.controls = false;
+  updateVideoClock();
+}
+function mediaClock(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  const total = Math.floor(seconds);
+  return Math.floor(total / 60) + ':' + String(total % 60).padStart(2, '0');
+}
+function updateVideoClock() {
+  const vid = $('vid');
+  const duration = Number.isFinite(vid.duration) ? vid.duration : 0;
+  $('videoTime').textContent = mediaClock(vid.currentTime) + ' / ' + mediaClock(duration);
+}
+function setVideoInfo(text) {
+  $('videoInfo').textContent = text;
+}
+function selectVideoFile(file) {
+  if (!file) return;
+  if (file.type && !file.type.startsWith('video/')) {
+    setVideoInfo('请选择视频文件（mp4/webm/mov 等浏览器可解码格式）。');
+    return;
+  }
+  if (videoUrl) URL.revokeObjectURL(videoUrl);
+  videoUrl = URL.createObjectURL(file);
+  videoFile = file;
+  videoFileName = file.name;
+  videoAssetId = null;
+  videoUploadPromise = null;
+  videoSelectionId += 1;
+  const vid = $('vid');
+  vid.pause();
+  vid.srcObject = null;
+  vid.src = videoUrl;
+  vid.muted = true;
+  vid.controls = true;
+  vid.loop = false;
+  vid.load();
+  setVideoInfo(`已选择：${file.name}（${(file.size / 1024 / 1024).toFixed(1)} MB）`);
+  $('replay').disabled = !!run;
+  updateVideoClock();
+}
+function loadVideoSource() {
+  const vid = $('vid');
+  vid.pause();
+  vid.srcObject = null;
+  if (vid.getAttribute('src') !== videoUrl) {
+    vid.src = videoUrl;
+    vid.load();
+  }
+  vid.muted = true;
+  vid.controls = true;
+  updateVideoClock();
+}
+function waitForVideoReady(video) {
+  if (video.error) {
+    return Promise.reject(new Error(video.error.message || '视频加载失败'));
+  }
+  if (video.readyState >= 2 && video.videoWidth) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => { cleanup(); resolve(); };
+    const fail = () => {
+      cleanup();
+      reject(new Error(video.error && video.error.message ? video.error.message : '视频加载失败'));
+    };
+    const cleanup = () => {
+      video.removeEventListener('loadeddata', done);
+      video.removeEventListener('canplay', done);
+      video.removeEventListener('error', fail);
+    };
+    video.addEventListener('loadeddata', done);
+    video.addEventListener('canplay', done);
+    video.addEventListener('error', fail);
+  });
+}
+function ensureVideoUploaded() {
+  if (!videoFile || videoAssetId) return Promise.resolve();
+  if (videoUploadPromise) return videoUploadPromise;
+  const selectionId = videoSelectionId;
+  const file = videoFile;
+  const vid = $('vid');
+  const form = new FormData();
+  form.append('file', file, file.name);
+  form.append('owner', name());
+  form.append('durationMs', String(Math.round((Number.isFinite(vid.duration) ? vid.duration : 0) * 1000)));
+  form.append('width', String(vid.videoWidth || 0));
+  form.append('height', String(vid.videoHeight || 0));
+
+  videoUploadPromise = (async () => {
+    try {
+      const response = await fetch(apiUrl('/videos'), { method: 'POST', body: form });
+      if (!response.ok) {
+        let message = 'HTTP ' + response.status;
+        try {
+          const payload = await response.json();
+          message = (payload && payload.error && payload.error.message) || message;
+        } catch (_) { /* ignore */ }
+        throw new Error(message);
+      }
+      const asset = await response.json();
+      if (selectionId !== videoSelectionId) return;
+      videoAssetId = asset.videoId;
+      setVideoInfo(`${file.name} · 已保存到局域网视频库`);
+      refreshVideoLibrary();
+    } catch (error) {
+      if (selectionId === videoSelectionId) {
+        setVideoInfo(`${file.name} · 仅保存在页面内（局域网视频库未连接）`);
+      }
+    } finally {
+      videoUploadPromise = null;
+    }
+  })();
+  return videoUploadPromise;
+}
+async function refreshVideoLibrary() {
+  const box = $('videoLibrary');
+  if (!box) return;
+  try {
+    const response = await fetch(apiUrl('/videos?owner=' + encodeURIComponent(name()) + '&pageSize=10'));
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const payload = await response.json();
+    renderVideoLibrary(Array.isArray(payload.items) ? payload.items : []);
+  } catch (_) {
+    box.replaceChildren();
+    const empty = document.createElement('span');
+    empty.className = 'empty';
+    empty.textContent = '未连接局域网视频库；当前视频仅保存在页面内。';
+    box.append(empty);
+  }
+}
+function renderVideoLibrary(items) {
+  const box = $('videoLibrary');
+  box.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement('span');
+    empty.className = 'empty';
+    empty.textContent = '局域网视频库暂无视频。';
+    box.append(empty);
+    return;
+  }
+
+  for (const asset of items) {
+    const item = document.createElement('div');
+    item.className = 'item';
+
+    const info = document.createElement('div');
+    const title = document.createElement('b');
+    title.textContent = asset.originalName || '未命名视频';
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const parts = [];
+    if (Number.isFinite(asset.durationMs)) parts.push(formatDuration(asset.durationMs));
+    if (Number.isFinite(asset.byteSize)) parts.push((asset.byteSize / 1024 / 1024).toFixed(1) + ' MB');
+    if (asset.width && asset.height) parts.push(`${asset.width}×${asset.height}`);
+    meta.textContent = parts.join(' · ') || '本地视频';
+    info.append(title, meta);
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+    const load = document.createElement('button');
+    load.className = 'secondary';
+    load.textContent = '载入';
+    load.onclick = () => loadVideoFromLibrary(asset);
+    const del = document.createElement('button');
+    del.className = 'secondary';
+    del.textContent = '删除';
+    del.onclick = () => deleteVideoFromLibrary(asset);
+    actions.append(load, del);
+
+    item.append(info, actions);
+    box.append(item);
+  }
+}
+async function loadVideoFromLibrary(asset) {
+  if (run) return;
+  setVideoInfo(`正在从局域网视频库读取：${asset.originalName}`);
+  try {
+    const response = await fetch(apiUrl(`/videos/${encodeURIComponent(asset.videoId)}/content`));
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    const blob = await response.blob();
+    if (run) return;
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    videoUrl = URL.createObjectURL(blob);
+    videoFile = null;
+    videoFileName = asset.originalName || 'video';
+    videoAssetId = asset.videoId;
+    videoSelectionId += 1;
+    const vid = $('vid');
+    vid.pause();
+    vid.srcObject = null;
+    vid.src = videoUrl;
+    vid.muted = true;
+    vid.controls = true;
+    vid.load();
+    await waitForVideoReady(vid);
+    setVideoInfo(`${videoFileName} · 来自局域网视频库`);
+    start('video');
+  } catch (error) {
+    setVideoInfo('读取局域网视频失败：' + (error.message || error));
+  }
+}
+async function deleteVideoFromLibrary(asset) {
+  if (!confirm(`删除本地视频“${asset.originalName}”？此操作不可恢复。`)) return;
+  try {
+    const response = await fetch(apiUrl(`/videos/${encodeURIComponent(asset.videoId)}`), { method: 'DELETE' });
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+    if (videoAssetId === asset.videoId) videoAssetId = null;
+    refreshVideoLibrary();
+  } catch (error) {
+    setVideoInfo('删除本地视频失败：' + (error.message || error));
+  }
+}
+function setMetrics(reps, quality, points, calories, activeMs, naturalMs) {
+  const ex = exercise();
+  $('mReps').textContent = ex.type === 'hold' ? formatDuration(activeMs) : String(reps);
+  $('mQuality').textContent = quality == null ? '--' : String(quality);
+  $('mPoints').textContent = String(points);
+  $('mCal').textContent = Number(calories || 0).toFixed(1);
+  $('mActive').textContent = formatDuration(activeMs);
+  $('mNatural').textContent = formatDuration(naturalMs);
+}
+function resetMetrics() {
+  $('mPointsLabel').textContent = '预计积分';
+  setMetrics(0, null, 0, 0, 0, 0);
+}
+
+async function ensureModel() {
+  if (model) return;
+  const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  const { FilesetResolver, PoseLandmarker } = await import(base + '/vision_bundle.mjs');
+  model = await PoseLandmarker.createFromOptions(
+    await FilesetResolver.forVisionTasks(base + '/wasm'),
+    {
+      baseOptions: {
+        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+      },
+      runningMode: 'VIDEO',
+      numPoses: 2,
+    },
+  );
+}
+
+async function start(mode) {
+  if (run) return;
+  lock(true);
+  $('end').disabled = true;
+  $('pause').disabled = true;
+  $('msg').textContent = '正在准备…';
+  $('feedback').textContent = '准备中（加载 C++ WASM 模型）';
+  let cadenceSession = null;
+  try {
+    const exerciseCode = $('kind').value;
+    const { createCadenceSession } = await loadCadenceModule();
+    cadenceSession = await createCadenceSession(exerciseCode);
+    if (mode === 'camera') {
+      detachVideoElement();
+      await ensureModel();
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      $('vid').srcObject = stream;
+      await $('vid').play();
+    } else if (mode === 'video') {
+      if (!videoUrl) throw new Error('请先选择视频文件');
+      releaseCamera();
+      await ensureModel();
+      loadVideoSource();
+      await waitForVideoReady($('vid'));
+      if (videoFile) ensureVideoUploaded();
+      $('vid').currentTime = 0;
+      await $('vid').play();
+    } else {
+      detachVideoElement();
+    }
+    run = {
+      mode,
+      exercise: exerciseCode,
+      session: cadenceSession,
+      countdownEnd: performance.now() + 3000,
+      start: 0,
+      paused: false,
+      pausedAt: 0,
+      pausedTotal: 0,
+      lastVideoTime: -1,
+      lastResult: null,
+    };
+    cadenceSession = null;
+    $('msg').textContent = '准备 3 秒…';
+    tick();
+  } catch (error) {
+    if (cadenceSession) cadenceSession.dispose();
+    if (run) { run.session.dispose(); run = null; }
+    releaseCamera();
+    run = null;
+    lock(false);
+    resetMetrics();
+    $('msg').textContent = '无法开始：' + (error && error.message ? error.message : error) + '。可改用离线演示。';
+  }
+}
+
+function activeMs(now) {
+  if (!run || !run.start) return 0;
+  const pauseNow = run.paused ? now - run.pausedAt : 0;
+  return Math.max(0, Math.min(SESSION_LIMIT_MS, now - run.start - run.pausedTotal - pauseNow));
+}
+function naturalMs(now) {
+  if (!run || !run.start) return 0;
+  return Math.max(0, Math.min(SESSION_LIMIT_MS, now - run.start));
+}
+
+function demoLandmarks(code, elapsed) {
+  const lm = Array.from({ length: 33 }, () => ({ x: 0, y: 0, z: 0, visibility: 1 }));
+  const cycle = (elapsed / 1000) % 3;
+  const target = cycle < 1.2;
+  const theta = ((target ? 80 : 170) * Math.PI) / 180;
+  const put = (i, x, y) => { lm[i] = { x, y, z: 0, visibility: 1 }; };
+
+  if (code === 'squat' || code === 'lunge') {
+    for (const side of [-1, 1]) {
+      const y = side * 0.5;
+      const knee = side < 0 ? 25 : 26;
+      const hip = side < 0 ? 23 : 24;
+      const ankle = side < 0 ? 27 : 28;
+      const shoulder = side < 0 ? 11 : 12;
+      put(knee, 0.5, y);
+      put(hip, 1.5, y);
+      put(ankle, 0.5 + Math.cos(theta), y + Math.sin(theta));
+      put(shoulder, 2.5, y);
+    }
+  } else if (code === 'pushup') {
+    for (const side of [-1, 1]) {
+      const y = side * 0.5;
+      const shoulder = side < 0 ? 11 : 12;
+      const elbow = side < 0 ? 13 : 14;
+      const wrist = side < 0 ? 15 : 16;
+      const hip = side < 0 ? 23 : 24;
+      const knee = side < 0 ? 25 : 26;
+      put(shoulder, 1.5, y);
+      put(elbow, 0.5, y);
+      put(wrist, 0.5 + Math.cos(theta), y + Math.sin(theta));
+      put(hip, 0.5, y);
+      put(knee, 0.5 + Math.cos((175 * Math.PI) / 180), y + Math.sin((175 * Math.PI) / 180));
+    }
+  } else if (code === 'plank') {
+    put(11, 1.5, 0.5);
+    put(23, 0.5, 0.5);
+    put(25, 0.5 + Math.cos((178 * Math.PI) / 180), 0.5 + Math.sin((178 * Math.PI) / 180));
+    put(27, 1.5, 0.5);
+  } else if (code === 'jumpingjack') {
+    const d = target ? 0.85 : 0.2;
+    put(15, 0.5 - d / 2, 0.5);
+    put(16, 0.5 + d / 2, 0.5);
+  }
+  return lm;
+}
+
+function tick() {
+  if (!run) return;
+  const now = performance.now();
+  const r = run;
+  const ex = EXERCISES[r.exercise];
+
+  if (now < r.countdownEnd) {
+    $('msg').textContent = '准备 ' + Math.ceil((r.countdownEnd - now) / 1000) + ' 秒…';
+    raf = requestAnimationFrame(tick);
+    return;
+  }
+  if (!r.start) {
+    r.start = now;
+    lock(true);
+    $('pause').disabled = false;
+    $('end').disabled = false;
+    $('mPointsLabel').textContent = '预计积分';
+    $('msg').textContent = '开始';
+  }
+
+  if (naturalMs(now) >= SESSION_LIMIT_MS) {
+    finish(true);
+    return;
+  }
+  if (r.paused) {
+    $('msg').textContent = '已暂停';
+    raf = requestAnimationFrame(tick);
+    return;
+  }
+  if (document.hidden) {
+    setPaused(true);
+    raf = requestAnimationFrame(tick);
+    return;
+  }
+
+  let landmarks = null;
+  let detectionMessage = '';
+  if (r.mode === 'demo') {
+    landmarks = demoLandmarks(r.exercise, activeMs(now));
+  } else {
+    if (!$('vid').videoWidth || $('vid').readyState < 2) {
+      detectionMessage = r.mode === 'video' ? '视频尚未就绪' : '摄像头尚未就绪';
+    } else if ($('vid').currentTime === r.lastVideoTime) {
+      raf = requestAnimationFrame(tick);
+      return;
+    } else {
+      r.lastVideoTime = $('vid').currentTime;
+      try {
+        const found = model.detectForVideo($('vid'), now).landmarks || [];
+        if (found.length === 1) landmarks = found[0];
+        else if (found.length === 0) detectionMessage = '未检测到人体，请让全身入镜';
+        else detectionMessage = '需要单人入镜';
+      } catch (_) {
+        detectionMessage = '无法判断，请调整机位';
+      }
+    }
+  }
+
+  if (landmarks) {
+    const result = r.session.process(landmarks, activeMs(now) / 1000);
+    if (!result) {
+      $('msg').textContent = 'C++ 模型未返回结果';
+      $('feedback').textContent = '请调整机位后重试；演示模式可验证模型逻辑。';
+    } else {
+      r.lastResult = result;
+      if (!result.poseDetected) {
+        $('msg').textContent = '无法判断：请让肩、髋、膝、踝同时入镜';
+      } else if (ex.type === 'hold') {
+        $('msg').textContent = `保持中 · 质量 ${Math.round(result.quality * 100)}`;
+      } else if (result.repetitionCompleted) {
+        $('msg').textContent = '完成 1 次！';
+      } else {
+        $('msg').textContent = result.inTarget ? '到位' : '未到位';
+      }
+      const feedback = result.feedback && result.feedback.length
+        ? result.feedback[0]
+        : (result.poseDetected ? ex.cameraHint : '请调整机位，保证必要关节可见');
+      $('feedback').textContent = feedback;
+    }
+  } else if (detectionMessage) {
+    $('msg').textContent = detectionMessage;
+    $('feedback').textContent = '需要单人、全身、侧向入镜；左侧身体朝向镜头。';
+  }
+
+  const summary = r.session.summary();
+  const quality = summary.averageQuality ? Math.round(summary.averageQuality * 100) : null;
+  setMetrics(summary.repetitions, quality, summary.points, summary.calories, activeMs(now), naturalMs(now));
+  raf = requestAnimationFrame(tick);
+}
+
+function setPaused(paused) {
+  if (!run || !run.start) return;
+  const now = performance.now();
+  if (paused && !run.paused) {
+    run.paused = true;
+    run.pausedAt = now;
+    if (run.mode === 'video') $('vid').pause();
+    $('pause').textContent = '继续';
+  } else if (!paused && run.paused) {
+    run.pausedTotal += now - run.pausedAt;
+    run.pausedAt = 0;
+    run.paused = false;
+    if (run.mode === 'video') $('vid').play().catch(() => {});
+    $('pause').textContent = '暂停';
+    $('msg').textContent = '继续训练';
+  }
+}
+
+function finish(auto, reason) {
+  if (!run) return;
+  const r = run;
+  const now = performance.now();
+  const wall = Date.now();
+  const active = auto ? SESSION_LIMIT_MS : activeMs(now);
+  const natural = auto ? SESSION_LIMIT_MS : naturalMs(now);
+  run = null;
+  cancelAnimationFrame(raf);
+  raf = 0;
+  if (r.mode === 'video') $('vid').pause();
+  releaseCamera();
+  lock(false);
+
+  if (!r.start) {
+    r.session.dispose();
+    resetMetrics();
+    $('msg').textContent = '已取消';
+    $('feedback').textContent = '选择动作后开始。';
+    return;
+  }
+
+  const summary = r.session.summary();
+  r.session.dispose();
+  const reps = summary.repetitions;
+  const quality = Math.round(summary.averageQuality * 100);
+  const basePoints = summary.points;
+  const demo = r.mode === 'demo';
+  const used = todayPoints(name(), wall);
+  const actual = demo ? 0 : Math.min(basePoints, Math.max(0, DAILY_CAP - used));
+  const ex = EXERCISES[r.exercise];
+
+  const record = {
+    id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(wall) + '-' + Math.random().toString(16).slice(2),
+    n: name(), t: wall, exercise: r.exercise,
+    reps, activeMs: active, naturalMs: natural, quality,
+    calories: Number(summary.calories.toFixed(1)),
+    basePoints, pts: actual, demo, source: r.mode,
+    fileName: r.mode === 'video' ? videoFileName : undefined,
+    videoAssetId: r.mode === 'video' ? videoAssetId : undefined,
+    version: 'model-v1-wasm',
+  };
+  data.rows.push(record);
+  const saved = save();
+  draw();
+
+  const metric = ex.type === 'hold'
+    ? `保持 ${formatDuration(active)}`
+    : `${reps} 次`;
+  const prefix = auto ? '达到 20 分钟上限，已自动结束。' : reason ? `${reason}，已保存：` : '已保存：';
+  $('msg').textContent = `${prefix}${metric}，质量 ${quality}，`
+    + `基础 ${basePoints} 分，入账 ${actual} 分` + (demo ? '（演示不计分）' : '')
+    + (saved ? '' : '（浏览器保存失败，本次结果仅在当前页面可见）');
+  $('feedback').textContent = demo
+    ? '演示模式：动作与计分逻辑与摄像头模式一致，但不计入周榜。'
+    : r.mode === 'video'
+      ? '视频分析记录已保存，可在下方查看或删除。'
+      : '记录已保存，可在下方查看或删除。';
+  setMetrics(reps, quality, actual, summary.calories, active, natural);
+  $('mPointsLabel').textContent = demo ? '积分（演示）' : '入账积分';
+}
+
+$('who').oninput = draw;
+$('who').addEventListener('change', refreshVideoLibrary);
+$('kind').onchange = () => { showExercise(); if (!run) resetMetrics(); };
+$('pub').onchange = () => {
+  data.opt['u:' + name()] = $('pub').checked;
+  save();
+  drawBoard();
+};
+$('cam').onclick = () => start('camera');
+$('demo').onclick = () => start('demo');
+$('video').onclick = () => {
+  if (!run) $('videoFile').click();
+};
+$('videoFile').onchange = (event) => {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  selectVideoFile(file);
+  start('video');
+};
+$('replay').onclick = () => {
+  if (!run && videoUrl) start('video');
+};
+$('autoReplay').onclick = () => {
+  autoReplay = !autoReplay;
+  $('autoReplay').textContent = autoReplay ? '自动重播：开' : '自动重播：关';
+};
+$('mirror').onclick = () => {
+  mirrored = !mirrored;
+  applyMirror();
+};
+$('pause').onclick = () => setPaused(!(run && run.paused));
+$('end').onclick = () => finish(false);
+
+const videoElement = $('vid');
+videoElement.addEventListener('loadedmetadata', () => {
+  if (videoUrl && videoFileName && videoElement.getAttribute('src') === videoUrl) {
+    const durationText = Number.isFinite(videoElement.duration)
+      ? formatDuration(videoElement.duration * 1000)
+      : '--';
+    const sourceText = videoFile ? '已选择' : '来自局域网视频库';
+    setVideoInfo(`${sourceText}：${videoFileName} · ${videoElement.videoWidth}×${videoElement.videoHeight} · ${durationText}`);
+  }
+  updateVideoClock();
+});
+videoElement.addEventListener('timeupdate', updateVideoClock);
+videoElement.addEventListener('durationchange', updateVideoClock);
+videoElement.addEventListener('seeked', updateVideoClock);
+videoElement.addEventListener('ended', () => {
+  if (!run || run.mode !== 'video') return;
+  if (autoReplay) {
+    cancelAnimationFrame(raf);
+    raf = 0;
+    run.session.reset();
+    run.countdownEnd = performance.now() + 3000;
+    run.start = 0;
+    run.paused = false;
+    run.pausedAt = 0;
+    run.pausedTotal = 0;
+    run.lastVideoTime = -1;
+    run.lastResult = null;
+    resetMetrics();
+    $('msg').textContent = '自动重播，准备 3 秒…';
+    const vid = $('vid');
+    vid.currentTime = 0;
+    vid.play().catch(() => {});
+    tick();
+  } else {
+    finish(false, '视频播放结束');
+  }
+});
+
+function applyMirror() {
+  $('vid').classList.toggle('mirror', mirrored);
+  $('mirror').textContent = mirrored ? '镜像画面：开' : '镜像画面：关';
+}
+applyMirror();
+document.onvisibilitychange = () => {
+  if (document.hidden && run && !run.paused) setPaused(true);
+};
+window.addEventListener('pagehide', () => {
+  releaseCamera();
+  if (run) finish(false);
+});
+
+for (const code of ORDER) {
+  const opt = document.createElement('option');
+  opt.value = code;
+  opt.textContent = EXERCISES[code].name;
+  $('kind').append(opt);
+}
+$('kind').value = 'squat';
+resetMetrics();
+draw();
+refreshVideoLibrary();
+</script>
+</body>
+</html>

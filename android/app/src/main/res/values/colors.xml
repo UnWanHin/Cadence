@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_green">#145E50</color>
+    <color name="brand_bg">#EDF3F2</color>
+    <color name="brand_ink">#183D38</color>
+    <color name="brand_muted">#52736C</color>
+    <color name="brand_card">#F2F8F6</color>
+    <color name="brand_line">#D6E5E0</color>
+    <color name="brand_accent">#D8F36A</color>
+    <color name="ic_launcher_background">#000000</color>
+</resources>

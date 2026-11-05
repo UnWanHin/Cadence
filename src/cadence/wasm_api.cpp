@@ -8,16 +8,48 @@
 #include <string>
 
 namespace {
+std::string json_escape(const std::string& input) {
+  std::string output;
+  output.reserve(input.size() + 8);
+  for (unsigned char c : input) {
+    switch (c) {
+      case '"': output += "\\\""; break;
+      case '\\': output += "\\\\"; break;
+      case '\n': output += "\\n"; break;
+      case '\r': output += "\\r"; break;
+      case '\t': output += "\\t"; break;
+      default:
+        if (c < 0x20) {
+          char escaped[7];
+          std::snprintf(escaped, sizeof(escaped), "\\u%04x", c);
+          output += escaped;
+        } else {
+          output += static_cast<char>(c);
+        }
+    }
+  }
+  return output;
+}
+
 std::string result_json(const cadence::EvaluationResult& result) {
-  char buffer[256];
+  char buffer[512];
   std::snprintf(buffer, sizeof(buffer),
-                "{\"poseDetected\":%s,\"inTarget\":%s,\"repetitionCompleted\":%s,\"hold\":%s,\"mainValue\":%.4f,\"quality\":%.4f}",
+                "{\"poseDetected\":%s,\"inTarget\":%s,\"repetitionCompleted\":%s,\"hold\":%s,\"mainValue\":%.4f,\"quality\":%.4f",
                 result.pose_detected ? "true" : "false",
                 result.in_target_position ? "true" : "false",
                 result.repetition_completed ? "true" : "false",
                 result.is_hold ? "true" : "false",
                 result.main_value, result.quality_score);
-  return buffer;
+  std::string output(buffer);
+  output += ",\"feedback\":[";
+  for (std::size_t i = 0; i < result.feedback.size(); ++i) {
+    if (i != 0) output += ',';
+    output += '"';
+    output += json_escape(result.feedback[i]);
+    output += '"';
+  }
+  output += "]}";
+  return output;
 }
 
 std::string summary_json(const cadence::SessionSummary& summary) {

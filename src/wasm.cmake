@@ -20,5 +20,5 @@ target_link_options(cadence_core_wasm PRIVATE
   "-sENVIRONMENT=web"
   "-sALLOW_MEMORY_GROWTH=1"
   "-sEXPORTED_FUNCTIONS=['_malloc','_free','_cadence_create_session','_cadence_destroy_session','_cadence_reset_session','_cadence_process_landmarks','_cadence_session_summary']"
-  "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString']"
+  "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString','HEAPF32']"
 )

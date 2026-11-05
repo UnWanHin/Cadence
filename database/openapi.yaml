@@ -1,0 +1,1052 @@
+openapi: 3.0.3
+info:
+  title: 校园智能运动平台 API
+  version: 1.2.0
+  description: |
+    模型对齐版服务端接口契约。动作判定、计数与积分以
+    `model/Cadence-main/docs/canonical-rules.md` 为准；端侧提交模型摘要，
+    服务端负责身份、规则版本、幂等结算、日上限、记录和排名。
+    第 8 节视频端点为局域网本地存储模拟：文件保存在主机本地，不进入中心数据库。
+    详细说明见 `database/API.md`。
+servers:
+  - url: /api/v1
+    description: 同源部署
+  - url: http://127.0.0.1:8787/api/v1
+    description: 局域网本地模拟；把 127.0.0.1 换成运行 database/local-server 的主机 IP
+tags:
+  - name: Auth
+  - name: Me
+  - name: Exercises
+  - name: Sessions
+  - name: Stats
+  - name: Leaderboard
+  - name: Videos
+  - name: Feedback
+  - name: Admin
+security:
+  - bearerAuth: []
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 注册学生账号
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, nickname, password]
+              properties:
+                loginId: { type: string, maxLength: 64 }
+                nickname: { type: string, minLength: 1, maxLength: 20 }
+                password: { type: string, minLength: 8, maxLength: 128, format: password }
+      responses:
+        '201':
+          description: 注册成功
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登录
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, password]
+              properties:
+                loginId: { type: string }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [token, expiresAt, user]
+                properties:
+                  token: { type: string }
+                  expiresAt: { type: string, format: date-time }
+                  user: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: 退出登录
+      responses:
+        '204': { description: 已退出 }
+
+  /me:
+    get:
+      tags: [Me]
+      summary: 当前用户
+      responses:
+        '200':
+          description: 当前用户
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    patch:
+      tags: [Me]
+      summary: 更新昵称或排名意愿
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                nickname: { type: string, minLength: 1, maxLength: 20 }
+                rankingOptIn: { type: boolean }
+      responses:
+        '200':
+          description: 更新后的用户
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /exercises:
+    get:
+      tags: [Exercises]
+      summary: 已启用运动项目及当前规则
+      parameters:
+        - name: includeDisabled
+          in: query
+          schema: { type: boolean, default: false }
+          description: 仅管理员可设为 true
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Exercise' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /exercises/{code}:
+    get:
+      tags: [Exercises]
+      summary: 运动项目详情
+      parameters:
+        - $ref: '#/components/parameters/ExerciseCode'
+      responses:
+        '200':
+          description: 项目详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Exercise' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /sessions:
+    post:
+      tags: [Sessions]
+      summary: 开始会话并锁定规则版本
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exerciseCode]
+              properties:
+                exerciseCode: { type: string, example: squat }
+      responses:
+        '201':
+          description: 会话已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionStartResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409': { $ref: '#/components/responses/Conflict' }
+    get:
+      tags: [Sessions]
+      summary: 查询本人运动记录
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: exerciseCode
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 记录分页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionRecordPage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /sessions/{publicId}:
+    get:
+      tags: [Sessions]
+      summary: 记录详情
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      responses:
+        '200':
+          description: 记录详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionRecord' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Sessions]
+      summary: 软删除记录并撤销积分
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      responses:
+        '200':
+          description: 已删除
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [publicId, deletedAt, revokedPoints]
+                properties:
+                  publicId: { type: string, format: uuid }
+                  deletedAt: { type: string, format: date-time }
+                  revokedPoints: { type: integer, minimum: 0 }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/SessionDeleted' }
+
+  /sessions/{publicId}/state:
+    patch:
+      tags: [Sessions]
+      summary: 同步会话状态与中间摘要
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [preparing, detecting, timing, auto_paused, user_paused, pending_submit]
+                validDurationMs: { type: integer, minimum: 0 }
+                naturalDurationMs: { type: integer, minimum: 0 }
+                repetitions: { type: integer, minimum: 0 }
+                averageQuality: { type: number, minimum: 0, maximum: 1 }
+                calories: { type: number, minimum: 0 }
+                modelPoints: { type: integer, minimum: 0 }
+                anomalySummary: { $ref: '#/components/schemas/AnomalySummary' }
+      responses:
+        '200':
+          description: 更新后的会话摘要
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionRecord' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /sessions/{publicId}/finish:
+    post:
+      tags: [Sessions]
+      summary: 提交冻结摘要并结算（幂等）
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FinishRequest' }
+      responses:
+        '200':
+          description: 结算结果；重复提交返回原结果
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FinishResponse' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '410': { $ref: '#/components/responses/SessionDeleted' }
+        '422': { $ref: '#/components/responses/InvalidSummary' }
+
+  /sessions/{publicId}/abort:
+    post:
+      tags: [Sessions]
+      summary: 主动放弃会话
+      parameters:
+        - $ref: '#/components/parameters/PublicId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, maxLength: 64 }
+      responses:
+        '200':
+          description: 已结束且不计分
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  publicId: { type: string, format: uuid }
+                  status: { type: string, enum: [abnormal_end] }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /stats/weekly:
+    get:
+      tags: [Stats]
+      summary: 个人周趋势
+      parameters:
+        - name: weekStart
+          in: query
+          schema: { type: string, format: date }
+          description: 周一日期；默认本周
+        - name: exerciseCode
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: 周趋势
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WeeklyStats' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /leaderboard/weekly:
+    get:
+      tags: [Leaderboard]
+      summary: 周排行榜
+      parameters:
+        - name: weekStart
+          in: query
+          schema: { type: string, format: date }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 周榜
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Leaderboard' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /leaderboard/me:
+    get:
+      tags: [Leaderboard]
+      summary: 我的周榜名次
+      parameters:
+        - name: weekStart
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: 我的名次
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MyRank' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /videos:
+    post:
+      tags: [Videos]
+      summary: 本地上传视频（局域网模拟）
+      description: 文件写入本地目录，元数据写入本地 JSON；不写中心数据库，也不需要 Bearer Token。
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, owner]
+              properties:
+                file: { type: string, format: binary }
+                owner: { type: string, minLength: 1, maxLength: 64 }
+                durationMs: { type: integer, minimum: 0 }
+                width: { type: integer, minimum: 0 }
+                height: { type: integer, minimum: 0 }
+      responses:
+        '201':
+          description: 已保存到本机视频库
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VideoAsset' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedMedia' }
+    get:
+      tags: [Videos]
+      summary: 本机视频库列表
+      security: []
+      parameters:
+        - name: owner
+          in: query
+          required: false
+          schema: { type: string, maxLength: 64 }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 本机视频分页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VideoAssetPage' }
+
+  /videos/{videoId}:
+    get:
+      tags: [Videos]
+      summary: 视频元数据
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VideoId'
+      responses:
+        '200':
+          description: 视频元数据
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VideoAsset' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Videos]
+      summary: 删除本地视频
+      description: 删除本地文件和元数据，不可恢复；重复删除仍返回 204。
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VideoId'
+      responses:
+        '204': { description: 已删除或此前已删除 }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /videos/{videoId}/content:
+    get:
+      tags: [Videos]
+      summary: 读取本地视频内容
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/VideoId'
+        - name: Range
+          in: header
+          required: false
+          schema: { type: string, example: bytes=0-1023 }
+      responses:
+        '200':
+          description: 完整视频流
+          headers:
+            Accept-Ranges:
+              schema: { type: string, example: bytes }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        '206':
+          description: 分段视频流
+          headers:
+            Content-Range:
+              schema: { type: string, example: bytes 0-1023/561602 }
+          content:
+            video/*:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /feedback:
+    post:
+      tags: [Feedback]
+      summary: 提交反馈
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, content]
+              properties:
+                sessionPublicId: { type: string, format: uuid, nullable: true }
+                category: { type: string, maxLength: 32 }
+                content: { type: string, minLength: 1, maxLength: 1000 }
+      responses:
+        '201':
+          description: 反馈已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Feedback' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /feedback/me:
+    get:
+      tags: [Feedback]
+      summary: 我的反馈
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 反馈分页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeedbackPage' }
+
+  /admin/exercises/{code}/rules:
+    post:
+      tags: [Admin]
+      summary: 创建规则草稿
+      parameters:
+        - $ref: '#/components/parameters/ExerciseCode'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RuleDraftRequest' }
+      responses:
+        '201':
+          description: 草稿已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rule' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/rules/{ruleId}/publish:
+    post:
+      tags: [Admin]
+      summary: 发布规则版本
+      parameters:
+        - name: ruleId
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                effectiveFrom: { type: string, format: date-time, nullable: true }
+      responses:
+        '200':
+          description: 已发布
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Rule' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/exercises/{code}/disable:
+    post:
+      tags: [Admin]
+      summary: 停用运动项目
+      parameters:
+        - $ref: '#/components/parameters/ExerciseCode'
+      responses:
+        '200':
+          description: 已停用
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, enabled]
+                properties:
+                  code: { type: string }
+                  enabled: { type: boolean, enum: [false] }
+                  disabledAt: { type: string, format: date-time }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/feedback:
+    get:
+      tags: [Admin]
+      summary: 反馈列表
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, processing, resolved, rejected] }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 反馈分页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FeedbackPage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /admin/feedback/{id}:
+    patch:
+      tags: [Admin]
+      summary: 处理反馈
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, format: int64, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [open, processing, resolved, rejected] }
+                handleNote: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: 已处理
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Feedback' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /admin/audit:
+    get:
+      tags: [Admin]
+      summary: 审计查询
+      parameters:
+        - name: targetType
+          in: query
+          schema: { type: string }
+        - name: targetId
+          in: query
+          schema: { type: string }
+        - name: actorLoginId
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 审计分页
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPage' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    ExerciseCode:
+      name: code
+      in: path
+      required: true
+      schema: { type: string, example: squat }
+    PublicId:
+      name: publicId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    VideoId:
+      name: videoId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationError:
+      description: 字段校验失败
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: 未认证
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 无权限
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: 冲突或重复操作
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    SessionDeleted:
+      description: 会话已删除
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidSummary:
+      description: 模型摘要与规则/时长不一致
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: 上传视频超过本地方案上限
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    UnsupportedMedia:
+      description: 不是可接收的视频类型
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string }
+            details: { type: object, additionalProperties: true }
+
+    User:
+      type: object
+      required: [loginId, nickname, role, rankingOptIn, status]
+      properties:
+        loginId: { type: string }
+        nickname: { type: string }
+        role: { type: string, enum: [student, admin] }
+        rankingOptIn: { type: boolean }
+        status: { type: string, enum: [active, disabled, deleted] }
+        createdAt: { type: string, format: date-time }
+
+    Rule:
+      type: object
+      required: [ruleId, version, mainMetric, targetDirection, enterThreshold, exitThreshold, minVisibility, pointsPerRep, pointsPerSecond, caloriesPerRep, caloriesPerSecond, maxSessionDurationMs, dailyPointsCap]
+      properties:
+        ruleId: { type: integer, format: int64 }
+        version: { type: integer }
+        status: { type: string, enum: [draft, published, retired] }
+        mainMetric: { type: string, enum: [knee_angle, elbow_angle, hip_angle, wrist_distance] }
+        targetDirection: { type: string, enum: [lte, gte, range, hold] }
+        targetLow: { type: number, nullable: true }
+        targetHigh: { type: number, nullable: true }
+        enterThreshold: { type: number, minimum: 0, maximum: 1 }
+        exitThreshold: { type: number, minimum: 0, maximum: 1 }
+        minVisibility: { type: number, minimum: 0, maximum: 1 }
+        pointsPerRep: { type: integer, minimum: 0 }
+        pointsPerSecond: { type: number, minimum: 0 }
+        caloriesPerRep: { type: number, minimum: 0 }
+        caloriesPerSecond: { type: number, minimum: 0 }
+        maxSessionDurationMs: { type: integer, minimum: 1 }
+        dailyPointsCap: { type: integer, minimum: 0 }
+        effectiveFrom: { type: string, format: date-time, nullable: true }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        jointDefinition: { type: object, additionalProperties: true }
+        thresholdConfig: { type: object, additionalProperties: true }
+
+    Exercise:
+      type: object
+      required: [code, name, type, description, enabled]
+      properties:
+        code: { type: string, enum: [squat, pushup, lunge, plank, jumpingjack] }
+        name: { type: string }
+        type: { type: string, enum: [reps, hold] }
+        description: { type: string }
+        enabled: { type: boolean }
+        rule: { $ref: '#/components/schemas/Rule' }
+
+    AnomalySummary:
+      type: object
+      properties:
+        codes:
+          type: array
+          items:
+            type: object
+            required: [code, ms]
+            properties:
+              code: { type: string, example: LOW_VISIBILITY }
+              ms: { type: integer, minimum: 0 }
+
+    ModelSummary:
+      type: object
+      required: [repetitions, points, calories, averageQuality, elapsedSeconds]
+      properties:
+        repetitions: { type: integer, minimum: 0 }
+        points: { type: integer, minimum: 0 }
+        calories: { type: number, minimum: 0 }
+        averageQuality: { type: number, minimum: 0, maximum: 1 }
+        elapsedSeconds: { type: number, minimum: 0 }
+
+    SessionStartResponse:
+      type: object
+      required: [publicId, exercise, rule, startedAt]
+      properties:
+        publicId: { type: string, format: uuid }
+        exercise:
+          type: object
+          properties:
+            code: { type: string }
+            name: { type: string }
+            type: { type: string, enum: [reps, hold] }
+        rule: { $ref: '#/components/schemas/Rule' }
+        startedAt: { type: string, format: date-time }
+
+    SessionRecord:
+      type: object
+      required: [publicId, exerciseCode, exerciseName, exerciseType, status, startedAt, validDurationMs, naturalDurationMs, repetitions, averageQuality, calories, modelPoints, ruleVersion]
+      properties:
+        publicId: { type: string, format: uuid }
+        exerciseCode: { type: string }
+        exerciseName: { type: string }
+        exerciseType: { type: string, enum: [reps, hold] }
+        status:
+          type: string
+          enum: [preparing, detecting, timing, auto_paused, user_paused, pending_submit, settled, abnormal_end]
+        startedAt: { type: string, format: date-time }
+        endedAt: { type: string, format: date-time, nullable: true }
+        validDurationMs: { type: integer, minimum: 0 }
+        naturalDurationMs: { type: integer, minimum: 0 }
+        repetitions: { type: integer, minimum: 0 }
+        averageQuality: { type: number, minimum: 0, maximum: 1 }
+        calories: { type: number, minimum: 0 }
+        modelPoints: { type: integer, minimum: 0 }
+        basePoints: { type: integer, minimum: 0, nullable: true }
+        actualPoints: { type: integer, minimum: 0, nullable: true }
+        attributionDate: { type: string, format: date, nullable: true }
+        ruleVersion: { type: integer }
+        deletedAt: { type: string, format: date-time, nullable: true }
+        idempotentReplay: { type: boolean }
+
+    SessionRecordPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/SessionRecord' }
+
+    FinishRequest:
+      type: object
+      required: [validDurationMs, naturalDurationMs, modelSummary]
+      properties:
+        validDurationMs: { type: integer, minimum: 0 }
+        naturalDurationMs: { type: integer, minimum: 0 }
+        modelSummary: { $ref: '#/components/schemas/ModelSummary' }
+        anomalySummary: { $ref: '#/components/schemas/AnomalySummary' }
+
+    FinishResponse:
+      type: object
+      required: [publicId, status, exerciseCode, repetitions, validDurationMs, naturalDurationMs, averageQuality, calories, modelPoints, basePoints, actualPoints, dailyUsed, dailyCap, attributionDate, ruleVersion, idempotentReplay]
+      properties:
+        publicId: { type: string, format: uuid }
+        status: { type: string, enum: [settled, abnormal_end] }
+        exerciseCode: { type: string }
+        repetitions: { type: integer, minimum: 0 }
+        validDurationMs: { type: integer, minimum: 0 }
+        naturalDurationMs: { type: integer, minimum: 0 }
+        averageQuality: { type: number, minimum: 0, maximum: 1 }
+        calories: { type: number, minimum: 0 }
+        modelPoints: { type: integer, minimum: 0 }
+        basePoints: { type: integer, minimum: 0 }
+        actualPoints: { type: integer, minimum: 0 }
+        dailyUsed: { type: integer, minimum: 0 }
+        dailyCap: { type: integer, minimum: 0 }
+        attributionDate: { type: string, format: date }
+        ruleVersion: { type: integer }
+        idempotentReplay: { type: boolean }
+
+    WeeklyStats:
+      type: object
+      required: [weekStart, days, totals]
+      properties:
+        weekStart: { type: string, format: date }
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              exerciseCode: { type: string }
+              validDurationMs: { type: integer, minimum: 0 }
+              repetitions: { type: integer, minimum: 0 }
+              averageQuality: { type: number, minimum: 0, maximum: 1 }
+              calories: { type: number, minimum: 0 }
+              points: { type: integer, minimum: 0 }
+        totals:
+          type: object
+          properties:
+            validDurationMs: { type: integer, minimum: 0 }
+            repetitions: { type: integer, minimum: 0 }
+            points: { type: integer, minimum: 0 }
+            calories: { type: number, minimum: 0 }
+
+    Leaderboard:
+      type: object
+      required: [weekStart, items]
+      properties:
+        weekStart: { type: string, format: date }
+        items:
+          type: array
+          items:
+            type: object
+            required: [rank, nickname, points]
+            properties:
+              rank: { type: integer, minimum: 1 }
+              nickname: { type: string }
+              points: { type: integer, minimum: 0 }
+        me:
+          type: object
+          nullable: true
+          properties:
+            rank: { type: integer, minimum: 1 }
+            nickname: { type: string }
+            points: { type: integer, minimum: 0 }
+
+    MyRank:
+      type: object
+      required: [weekStart, optedIn]
+      properties:
+        weekStart: { type: string, format: date }
+        optedIn: { type: boolean }
+        rank: { type: integer, minimum: 1, nullable: true }
+        nickname: { type: string }
+        points: { type: integer, minimum: 0 }
+
+    Feedback:
+      type: object
+      required: [id, category, content, status, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        sessionPublicId: { type: string, format: uuid, nullable: true }
+        category: { type: string }
+        content: { type: string }
+        status: { type: string, enum: [open, processing, resolved, rejected] }
+        createdAt: { type: string, format: date-time }
+        handledAt: { type: string, format: date-time, nullable: true }
+        handleNote: { type: string, nullable: true }
+
+    FeedbackPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/Feedback' }
+
+    AuditEvent:
+      type: object
+      required: [action, targetType, targetId, result, createdAt]
+      properties:
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: string }
+        result: { type: string, enum: [success, failure] }
+        actorLoginId: { type: string, nullable: true }
+        detail: { type: object, additionalProperties: true, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    AuditPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          properties:
+            items:
+              type: array
+              items: { $ref: '#/components/schemas/AuditEvent' }
+
+    PageMeta:
+      type: object
+      required: [page, pageSize, total]
+      properties:
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }
+
+    RuleDraftRequest:
+      type: object
+      required: [mainMetric, targetDirection, enterThreshold, exitThreshold, minVisibility, pointsPerRep, pointsPerSecond, caloriesPerRep, caloriesPerSecond, maxSessionDurationMs, dailyPointsCap, jointDefinition, thresholdConfig]
+      properties:
+        mainMetric: { type: string, enum: [knee_angle, elbow_angle, hip_angle, wrist_distance] }
+        targetDirection: { type: string, enum: [lte, gte, range, hold] }
+        targetLow: { type: number, nullable: true }
+        targetHigh: { type: number, nullable: true }
+        enterThreshold: { type: number, minimum: 0, maximum: 1 }
+        exitThreshold: { type: number, minimum: 0, maximum: 1 }
+        minVisibility: { type: number, minimum: 0, maximum: 1 }
+        pointsPerRep: { type: integer, minimum: 0 }
+        pointsPerSecond: { type: number, minimum: 0 }
+        caloriesPerRep: { type: number, minimum: 0 }
+        caloriesPerSecond: { type: number, minimum: 0 }
+        maxSessionDurationMs: { type: integer, minimum: 1 }
+        dailyPointsCap: { type: integer, minimum: 0 }
+        jointDefinition: { type: object, additionalProperties: true }
+        thresholdConfig: { type: object, additionalProperties: true }
+
+    VideoAsset:
+      type: object
+      required: [videoId, owner, originalName, contentType, byteSize, sha256, status, createdAt, contentUrl]
+      properties:
+        videoId: { type: string, format: uuid }
+        owner: { type: string, minLength: 1, maxLength: 64 }
+        originalName: { type: string, minLength: 1, maxLength: 255 }
+        contentType: { type: string, example: video/mp4 }
+        byteSize: { type: integer, format: int64, minimum: 0 }
+        durationMs: { type: integer, minimum: 0, nullable: true }
+        width: { type: integer, minimum: 0, nullable: true }
+        height: { type: integer, minimum: 0, nullable: true }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        status: { type: string, enum: [active, deleted] }
+        createdAt: { type: string, format: date-time }
+        contentUrl: { type: string }
+
+    VideoAssetPage:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/VideoAsset' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, minimum: 0 }

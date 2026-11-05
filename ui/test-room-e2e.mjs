@@ -64,7 +64,10 @@ if (!chromium || !executablePath) {
 }
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cadence-room-'));
-const server = spawn(process.execPath, [path.join(root, 'database/local-server/server.mjs')], {
+// EXTERNAL=1 points the test at an already-running room service (for example
+// the JVM one the APK ships) instead of starting the Node one.
+const external = process.env.EXTERNAL === '1';
+const server = external ? null : spawn(process.execPath, [path.join(root, 'database/local-server/server.mjs')], {
   env: { ...process.env, PORT: String(PORT), HOST: '127.0.0.1', DATA_DIR: dataDir },
   stdio: 'ignore',
 });
@@ -99,7 +102,7 @@ async function until(page, predicate, timeoutMs = 15000) {
 const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
 
 try {
-  await waitForServer();
+  if (!external) await waitForServer();
   const alice = await browser.newContext();
   const bob = await browser.newContext();
   const a = await alice.newPage();
@@ -148,7 +151,7 @@ try {
   check(aSawEvent, 'A sees a leaderboard entry pushed by another client');
 } finally {
   await browser.close();
-  server.kill();
+  if (server) server.kill();
   fs.rmSync(dataDir, { recursive: true, force: true });
 }
 

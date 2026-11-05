@@ -662,9 +662,6 @@ class MainActivity : AppCompatActivity() {
         // recomputed from events, so the record must be the raw result rather
         // than a precomputed score.
         val exerciseCode = currentExercise.name.lowercase()
-        LanRoom.username = runCatching {
-            getSharedPreferences("profile", MODE_PRIVATE).getString("username", null)
-        }.getOrNull() ?: LanRoom.username
         LanRoom.record(
             context = this,
             exercise = exerciseCode,

@@ -1,19 +1,31 @@
 package com.campus.sport
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.campus.sport.lan.ChatMessage
 import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
+import com.campus.sport.lan.QrCode
 import com.campus.sport.lan.RoomClient
+import com.campus.sport.lan.WorkoutEvent
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -23,7 +35,7 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * LAN leaderboard and room chat.
+ * LAN leaderboard, room chat, profile and QR join.
  *
  * Reads from this device's local event log and, when a room is joined, from the
  * host too. Ranking is recomputed here from events, never taken precomputed.
@@ -36,13 +48,30 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private lateinit var chatInput: EditText
     private lateinit var statusText: TextView
     private lateinit var roomInput: EditText
+    private lateinit var usernameInput: EditText
+    private lateinit var deviceIdText: TextView
 
     private var pollJob: Job? = null
     private var remoteRoom: String? = null
-    private val remoteEvents = mutableListOf<com.campus.sport.lan.WorkoutEvent>()
-    private val remoteChat = mutableListOf<com.campus.sport.lan.ChatMessage>()
+    private val remoteEvents = mutableListOf<WorkoutEvent>()
+    private val remoteChat = mutableListOf<ChatMessage>()
     private val chatDirty = AtomicBoolean(false)
     private val rangeKeys = arrayOf("day", "week", "month", "all")
+
+    private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
+        val contents = result?.contents
+        if (contents.isNullOrBlank()) return@registerForActivityResult
+        val address = QrCode.parseRoomAddress(contents)
+        if (address == null) {
+            Toast.makeText(this, R.string.room_scan_invalid, Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        roomInput.setText(address)
+        joinRoom()
+    }
+
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -54,6 +83,8 @@ class LanLeaderboardActivity : AppCompatActivity() {
         chatInput = findViewById(R.id.chatInput)
         statusText = findViewById(R.id.roomStatus)
         roomInput = findViewById(R.id.roomAddress)
+        usernameInput = findViewById(R.id.usernameInput)
+        deviceIdText = findViewById(R.id.myDeviceId)
 
         rangeSpinner.adapter = ArrayAdapter(
             this,
@@ -66,8 +97,14 @@ class LanLeaderboardActivity : AppCompatActivity() {
         findViewById<Button>(R.id.hostButton).setOnClickListener { toggleHosting() }
         findViewById<Button>(R.id.joinButton).setOnClickListener { joinRoom() }
         findViewById<Button>(R.id.chatSend).setOnClickListener { sendChat() }
+        findViewById<Button>(R.id.scanButton).setOnClickListener { startScan() }
+        findViewById<Button>(R.id.showQrButton).setOnClickListener { showMyQr() }
+        findViewById<Button>(R.id.usernameSave).setOnClickListener { saveUsername() }
 
         LanRoom.ensureLoaded(this)
+        usernameInput.setText(LanRoom.username(this))
+        deviceIdText.text = getString(R.string.profile_my_id, LanRoom.deviceId(this))
+
         roomInput.setText(intent.getStringExtra(EXTRA_ROOM).orEmpty())
         refreshBoard()
         renderChat()
@@ -78,6 +115,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         super.onResume()
         startPolling()
         refreshBoard()
+        updateStatus()
     }
 
     override fun onPause() {
@@ -86,21 +124,51 @@ class LanLeaderboardActivity : AppCompatActivity() {
         pollJob = null
     }
 
+    // ---- profile -----------------------------------------------------------
+
+    private fun saveUsername() {
+        val saved = LanRoom.setUsername(this, usernameInput.text.toString())
+        usernameInput.setText(saved)
+        Toast.makeText(this, getString(R.string.profile_saved, saved), Toast.LENGTH_SHORT).show()
+        refreshBoard()
+    }
+
+    // ---- hosting and joining ------------------------------------------------
+
     private fun toggleHosting() {
         if (LanRoom.isHosting()) {
-            LanRoom.stopHosting()
+            LanRoom.stopHosting(this)
             updateStatus()
             Toast.makeText(this, R.string.room_host_stopped, Toast.LENGTH_SHORT).show()
             return
         }
+        requestNotificationPermissionIfNeeded()
         runCatching { LanRoom.startHosting(this) }
-            .onSuccess {
+        lifecycleScope.launch {
+            // The service starts asynchronously; give it a moment before reporting.
+            delay(700)
+            if (LanRoom.isHosting()) {
                 updateStatus()
-                Toast.makeText(this, getString(R.string.room_host_started, it), Toast.LENGTH_LONG).show()
+                val url = LanRoom.hostingUrls().firstOrNull()
+                Toast.makeText(
+                    this@LanLeaderboardActivity,
+                    if (url != null) getString(R.string.room_host_started_url, url)
+                    else getString(R.string.room_host_started, LanRoom.DEFAULT_PORT),
+                    Toast.LENGTH_LONG,
+                ).show()
+            } else {
+                statusText.text = getString(R.string.room_host_failed, "")
             }
-            .onFailure {
-                statusText.text = getString(R.string.room_host_failed, it.message ?: "")
-            }
+        }
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun joinRoom() {
@@ -110,30 +178,96 @@ class LanLeaderboardActivity : AppCompatActivity() {
             return
         }
         val normalized = if (address.startsWith("http")) address else "http://$address"
-        remoteRoom = normalized.trimEnd('/')
-        statusText.text = getString(R.string.room_joining, normalized)
+        val room = normalized.trimEnd('/')
+        remoteRoom = room
+        statusText.text = getString(R.string.room_joining, room)
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    val client = RoomClient(remoteRoom!!)
+                    val client = RoomClient(room)
                     if (!client.health()) return@runCatching false
-                    val merged = client.pushEvents(
-                        LanRoom.localStore(this@LanLeaderboardActivity).events(),
-                    )
+                    val merged = client.pushEvents(LanRoom.localStore(this@LanLeaderboardActivity).events())
                     remoteEvents.clear()
                     remoteEvents.addAll(merged)
                     true
                 }.getOrDefault(false)
             }
-            statusText.text = if (ok) {
-                getString(R.string.room_joined, normalized)
-            } else {
-                getString(R.string.room_join_failed, normalized)
-            }
+            statusText.text = if (ok) getString(R.string.room_joined, room)
+            else getString(R.string.room_join_failed, room)
             refreshBoard()
             renderChat()
         }
     }
+
+    // ---- QR ----------------------------------------------------------------
+
+    private fun startScan() {
+        val options = ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt(getString(R.string.room_scan_prompt))
+            setBeepEnabled(false)
+            setOrientationLocked(false)
+        }
+        runCatching { scanLauncher.launch(options) }
+            .onFailure { Toast.makeText(this, getString(R.string.room_scan_failed, it.message ?: ""), Toast.LENGTH_LONG).show() }
+    }
+
+    private fun showMyQr() {
+        val payload = shareableAddress()
+        if (payload == null) {
+            Toast.makeText(this, R.string.room_qr_empty, Toast.LENGTH_LONG).show()
+            return
+        }
+        val bitmap = QrCode.encode(payload, 720)
+        if (bitmap == null) {
+            Toast.makeText(this, R.string.room_qr_unavailable, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(48, 48, 48, 24)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+        }
+        container.addView(
+            ImageView(this).apply {
+                setImageBitmap(bitmap)
+                adjustViewBounds = true
+                layoutParams = LinearLayout.LayoutParams(dp(240), dp(240))
+            },
+        )
+        container.addView(
+            TextView(this).apply {
+                text = payload
+                setPadding(0, dp(16), 0, dp(4))
+                textSize = 15f
+                gravity = android.view.Gravity.CENTER
+            },
+        )
+        container.addView(
+            TextView(this).apply {
+                text = getString(R.string.room_qr_hint)
+                textSize = 12f
+                gravity = android.view.Gravity.CENTER
+            },
+        )
+
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.room_qr_title)
+            .setView(container)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+    }
+
+    /** What another device should scan to reach this room. */
+    private fun shareableAddress(): String? {
+        LanRoom.hostingUrls().firstOrNull()?.let { return it }
+        return remoteRoom
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    // ---- polling -----------------------------------------------------------
 
     private fun startPolling() {
         if (pollJob != null) return
@@ -173,11 +307,13 @@ class LanLeaderboardActivity : AppCompatActivity() {
         }
     }
 
-    private fun allEvents(): List<com.campus.sport.lan.WorkoutEvent> {
+    // ---- rendering ---------------------------------------------------------
+
+    private fun allEvents(): List<WorkoutEvent> {
         val local = LanRoom.localStore(this).events()
         if (remoteEvents.isEmpty()) return local
         val seen = local.map { it.eventId }.toHashSet()
-        val merged = ArrayList<com.campus.sport.lan.WorkoutEvent>(local.size + remoteEvents.size)
+        val merged = ArrayList<WorkoutEvent>(local.size + remoteEvents.size)
         merged.addAll(local)
         for (event in remoteEvents) if (seen.add(event.eventId)) merged.add(event)
         return merged
@@ -186,6 +322,12 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private fun refreshBoard() {
         val range = rangeKeys.getOrElse(rangeSpinner.selectedItemPosition) { "week" }
         val rows: List<Leaderboard.Row> = Leaderboard.rank(allEvents(), range, System.currentTimeMillis())
+        // Renaming is display-only; show the current name for this device right
+        // away instead of waiting for the next event. Peers pick it up from the
+        // username carried by future events.
+        val me = LanRoom.profileId(this)
+        val myName = LanRoom.username(this)
+        rows.firstOrNull { it.profileId == me }?.username = myName
         boardBox.removeAllViews()
         if (rows.isEmpty()) {
             boardBox.addView(label(getString(R.string.board_empty)))
@@ -231,7 +373,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val sent = withContext(Dispatchers.IO) {
                 runCatching {
-                    RoomClient(room).sendChat(text, LanRoom.username, LanRoom.profileId())
+                    RoomClient(room).sendChat(text, LanRoom.username(this@LanLeaderboardActivity), LanRoom.profileId(this@LanLeaderboardActivity))
                 }.getOrNull()
             }
             if (sent != null) {
@@ -244,17 +386,14 @@ class LanLeaderboardActivity : AppCompatActivity() {
     }
 
     private fun updateStatus() {
-        statusText.text = if (LanRoom.isHosting()) {
-            val urls = LanRoom.hostingUrls()
-            if (urls.isEmpty()) {
-                getString(R.string.room_hosting_no_address, LanRoom.DEFAULT_PORT)
-            } else {
-                getString(R.string.room_hosting, urls.first())
+        statusText.text = when {
+            LanRoom.isHosting() -> {
+                val url = LanRoom.hostingUrls().firstOrNull()
+                if (url != null) getString(R.string.room_hosting, url)
+                else getString(R.string.room_hosting_no_address, LanRoom.DEFAULT_PORT)
             }
-        } else if (remoteRoom != null) {
-            getString(R.string.room_joined, remoteRoom)
-        } else {
-            getString(R.string.room_idle)
+            remoteRoom != null -> getString(R.string.room_joined, remoteRoom)
+            else -> getString(R.string.room_idle)
         }
     }
 

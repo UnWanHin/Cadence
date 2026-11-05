@@ -11,7 +11,10 @@ export function periodStart(range, timestamp = Date.now()) {
 export function rankEvents(events, range = 'week', now = Date.now()) {
   const start = periodStart(range, now);
   const grouped = new Map();
+  const seen = new Set();
   for (const event of events) {
+    if (event.eventId && seen.has(event.eventId)) continue;
+    if (event.eventId) seen.add(event.eventId);
     if (event.demo || Number(event.occurredAt || event.t) < start) continue;
     const id = event.profileId || event.deviceId || event.n || 'unknown';
     const row = grouped.get(id) || { profileId: id, username: event.username || event.n || '同学', points: 0, durationSeconds: 0, repetitions: 0 };

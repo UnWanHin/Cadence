@@ -277,7 +277,7 @@ async function connectLan() {
   }
 }
 async function syncLan() {
-  const payload = { profile, events: allEvents() };
+  const payload = { profile, events: data.rows.filter((row) => !row.demo).map((row) => eventFromRecord(row, profile)) };
   if (lanSocket?.readyState === WebSocket.OPEN) {
     lanSocket.send(JSON.stringify({ type: 'events', ...payload }));
     return;

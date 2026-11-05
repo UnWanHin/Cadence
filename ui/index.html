@@ -306,6 +306,8 @@ async function connectLan() {
     chatMessages = chatStore.messages;
     $('lanStatus').textContent = '局域网 HTTP 已连接';
     draw(); drawChat();
+    // Push this device's local history so the other clients can rank it.
+    await syncLan();
   } catch (_) {
     $('lanStatus').textContent = '未连接房间';
   }

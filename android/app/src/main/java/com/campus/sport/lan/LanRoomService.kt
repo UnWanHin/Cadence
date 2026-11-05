@@ -57,6 +57,10 @@ class LanRoomService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         val port = intent?.getIntExtra(EXTRA_PORT, LanRoom.DEFAULT_PORT) ?: LanRoom.DEFAULT_PORT
         roomName = intent?.getStringExtra(EXTRA_ROOM_NAME)
             ?: LanRoom.username(applicationContext) + " 的房间"
@@ -73,7 +77,7 @@ class LanRoomService : Service() {
         acquireWakeLock()
         handler.removeCallbacks(refreshStatus)
         handler.post(refreshStatus)
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -82,6 +86,19 @@ class LanRoomService : Service() {
         releaseWakeLock()
         LanRoom.stopServer()
         super.onDestroy()
+    }
+
+    /**
+     * Swiping the app away from recents stops the room.
+     *
+     * A foreground service otherwise survives that gesture, which would leave a
+     * phone broadcasting and serving files long after the user believed they had
+     * closed the app. Backgrounding or locking the screen still keeps the room
+     * alive; only an explicit close tears it down.
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -119,6 +136,12 @@ class LanRoomService : Service() {
     }
 
     private fun buildNotification(text: String): Notification {
+        val stop = PendingIntent.getService(
+            this,
+            1,
+            Intent(this, LanRoomService::class.java).setAction(ACTION_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -136,6 +159,7 @@ class LanRoomService : Service() {
             .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentIntent(open)
+            .addAction(0, getString(R.string.room_notification_stop), stop)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build()
@@ -167,6 +191,7 @@ class LanRoomService : Service() {
     companion object {
         const val EXTRA_PORT = "port"
         const val EXTRA_ROOM_NAME = "roomName"
+        const val ACTION_STOP = "com.campus.sport.lan.STOP_ROOM"
         private const val CHANNEL_ID = "cadence-room"
         private const val NOTIFICATION_ID = 4321
         private const val WAKE_LOCK_TAG = "Cadence::LanRoom"

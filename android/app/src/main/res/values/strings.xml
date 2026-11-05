@@ -124,4 +124,5 @@
     <string name="room_qr_auto_join_title">发现附近的房间</string>
     <string name="room_qr_auto_join_message">要加入「%1$s」吗？</string>
     <string name="room_qr_auto_join_yes">加入</string>
+    <string name="room_notification_stop">停止房间</string>
 </resources>

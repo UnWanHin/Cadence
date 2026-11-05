@@ -38,13 +38,16 @@ android {
             keystorePropertiesFile.inputStream().use { load(it) }
         }
     }
-    val hasReleaseKey = keystoreProperties.getProperty("storeFile")
-        ?.let { file(it).exists() } == true
+    // Resolve against the root project: a relative storeFile must not be looked
+    // up inside app/, which is where the module-relative file() would point.
+    val releaseStore = keystoreProperties.getProperty("storeFile")
+        ?.let { rootProject.file(it) }
+    val hasReleaseKey = releaseStore?.exists() == true
 
     signingConfigs {
         if (hasReleaseKey) {
             create("release") {
-                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storeFile = releaseStore
                 storePassword = keystoreProperties.getProperty("storePassword")
                 keyAlias = keystoreProperties.getProperty("keyAlias")
                 keyPassword = keystoreProperties.getProperty("keyPassword")

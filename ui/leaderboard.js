@@ -55,8 +55,46 @@ export function eventFromRecord(record, profile) {
     demo: record.demo === true,
   };
 }
-export function createProfile(username) {
-  const deviceId = localStorage.getItem('cadence-device-id') || crypto.randomUUID();
-  localStorage.setItem('cadence-device-id', deviceId);
+/**
+ * crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
+ * A phone opening this page over http://192.168.x.x is NOT secure, so calling
+ * it directly throws and takes the whole module down. Fall back to random bytes.
+ */
+export function randomId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    try { return crypto.randomUUID(); } catch (_) { /* fall through */ }
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+export function createProfile(username, storage = safeStorage()) {
+  let deviceId = '';
+  try { deviceId = storage.getItem('cadence-device-id') || ''; } catch (_) { deviceId = ''; }
+  if (!deviceId) {
+    deviceId = randomId();
+    try { storage.setItem('cadence-device-id', deviceId); } catch (_) { /* private mode */ }
+  }
   return { deviceId, profileId: deviceId, username: username || '同学A' };
+}
+
+/** Some browsers throw on localStorage access (private mode, blocked storage). */
+export function safeStorage() {
+  try {
+    if (typeof localStorage !== 'undefined') return localStorage;
+  } catch (_) { /* blocked */ }
+  const map = new Map();
+  return {
+    getItem: (key) => (map.has(key) ? map.get(key) : null),
+    setItem: (key, value) => { map.set(key, String(value)); },
+    removeItem: (key) => { map.delete(key); },
+  };
 }

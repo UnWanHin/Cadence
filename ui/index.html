@@ -123,7 +123,7 @@
 
 <script src="core.js"></script>
 <script type="module">
-import { rankEvents, eventFromRecord, createProfile } from './leaderboard.js';
+import { rankEvents, eventFromRecord, createProfile, randomId } from './leaderboard.js';
 import { createChatStore } from './chat.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
@@ -848,7 +848,7 @@ function finish(auto, reason) {
   const ex = EXERCISES[r.exercise];
 
   const record = {
-    id: (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(wall) + '-' + Math.random().toString(16).slice(2),
+    id: randomId(),
     n: name(), t: wall, exercise: r.exercise,
     reps, activeMs: active, naturalMs: natural, quality,
     calories: Number(summary.calories.toFixed(1)),

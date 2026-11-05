@@ -1,7 +1,7 @@
 // Leaderboard rules: periods, scoring, ordering, dedupe.
 //
 // Run: node ui/test-leaderboard.mjs
-import { rankEvents, periodStart, eventFromRecord, RANGES } from './leaderboard.js';
+import { rankEvents, periodStart, eventFromRecord, createProfile, randomId, RANGES } from './leaderboard.js';
 
 let failures = 0;
 function check(condition, message) {
@@ -130,6 +130,32 @@ check(mapped.profileId === 'p1' && mapped.username === 'YG', 'profile identity i
 const demoRecord = eventFromRecord({ ...record, demo: true }, { profileId: 'p1', deviceId: 'd1', username: 'YG' });
 check(demoRecord.demo === true, 'a demo record keeps its demo flag');
 check(rankEvents([demoRecord], 'all', now).length === 0, 'a mapped demo record does not score');
+
+// --- insecure-context identity -------------------------------------------
+// A phone opening the page over http://192.168.x.x is NOT a secure context,
+// so crypto.randomUUID does not exist there. It must not break the page.
+{
+  const realCrypto = globalThis.crypto;
+  try {
+    Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
+    const id = randomId();
+    check(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(id),
+      'randomId still works without crypto.randomUUID');
+    check(id !== randomId(), 'randomId is not constant');
+
+    const map = new Map();
+    const storage = {
+      getItem: (key) => (map.has(key) ? map.get(key) : null),
+      setItem: (key, value) => map.set(key, String(value)),
+    };
+    const profile = createProfile('同学A', storage);
+    check(profile.profileId === profile.deviceId, 'profile id matches device id');
+    check(storage.getItem('cadence-device-id') === profile.deviceId, 'device id is persisted');
+    check(createProfile('同学A', storage).deviceId === profile.deviceId, 'device id is reused on reload');
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', { value: realCrypto, configurable: true });
+  }
+}
 
 if (failures) {
   console.error(`LEADERBOARD TEST FAILED (${failures})`);

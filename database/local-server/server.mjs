@@ -74,7 +74,7 @@ class ApiError extends Error {
 fs.mkdirSync(VIDEO_ROOT, { recursive: true });
 
 function defaultStore() {
-  return { version: 1, videos: [] };
+  return { version: 2, videos: [], workoutEvents: [], chatMessages: [] };
 }
 
 function loadStore() {
@@ -90,6 +90,16 @@ function loadStore() {
 }
 
 let store = loadStore();
+store.workoutEvents ||= [];
+store.chatMessages ||= [];
+
+const realtimeClients = new Set();
+function broadcast(payload) {
+  const body = JSON.stringify(payload);
+  for (const client of realtimeClients) {
+    if (client.readyState === 1) client.send(body);
+  }
+}
 
 function saveStore() {
   const tmp = `${STORE_FILE}.tmp`;
@@ -443,12 +453,29 @@ function handleDeleteVideo(res, videoId) {
   sendNoContent(res);
 }
 
+async function handleEvents(req, res) {
+  if (req.method === 'GET') { sendJson(res, 200, { events: store.workoutEvents }); return true; }
+  if (req.method !== 'POST') return false;
+  const body = JSON.parse((await readBody(req, 2 * 1024 * 1024)).toString('utf8') || '{}');
+  const events = Array.isArray(body.events) ? body.events : [];
+  const known = new Set(store.workoutEvents.map((event) => event.eventId));
+  for (const event of events) {
+    if (!event?.eventId || known.has(event.eventId)) continue;
+    if (Number(event.points) < 0 || Number(event.points) > 10000) continue;
+    store.workoutEvents.push(event); known.add(event.eventId);
+  }
+  saveStore(); broadcast({ type: 'events', events: store.workoutEvents });
+  sendJson(res, 200, { events: store.workoutEvents }); return true;
+}
+
 async function handleApi(req, res, url) {
   const apiPath = url.pathname.startsWith(API_PREFIX)
     ? url.pathname.slice(API_PREFIX.length)
     : url.pathname;
   const method = req.method || 'GET';
 
+  if (apiPath === '/events') return handleEvents(req, res);
+  if (apiPath === '/chat') return handleChat(req, res);
   if (apiPath === '/health' && method === 'GET') {
     sendJson(res, 200, {
       ok: true,
@@ -534,6 +561,16 @@ async function serveStatic(req, res, url) {
     return;
   }
   fs.createReadStream(filePath).pipe(res);
+}
+
+async function handleChat(req, res) {
+  if (req.method === 'GET') { sendJson(res, 200, { messages: store.chatMessages.slice(-100) }); return true; }
+  if (req.method !== 'POST') return false;
+  const body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8') || '{}');
+  if (!String(body.text || '').trim()) throw new ApiError(400, 'VALIDATION_ERROR', '消息不能为空');
+  const chat = { messageId: body.messageId || crypto.randomUUID(), username: String(body.username || '同学').slice(0, 20), profileId: String(body.profileId || ''), text: String(body.text).slice(0, 500), sentAt: Number(body.sentAt) || Date.now() };
+  store.chatMessages.push(chat); store.chatMessages = store.chatMessages.slice(-1000); saveStore();
+  sendJson(res, 201, chat); return true;
 }
 
 function lanAddresses() {

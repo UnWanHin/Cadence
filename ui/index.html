@@ -103,18 +103,27 @@
   <section>
     <h2>我的运动记录</h2>
     <label><input id="pub" type="checkbox"> 以档案昵称加入本机周榜</label>
-    <p class="hint">记录仅保存在当前浏览器；演示数据标为“演示”，不计入周榜。</p>
+    <p class="hint">训练事件保存在本机；加入局域网房间后会同步事件，并按日、周、月和总榜重新计算。</p>
     <div id="hist"></div>
   </section>
 
   <section>
-    <h2>本周积分榜</h2>
+    <h2>局域网排行榜</h2>
+    <label>统计周期 <select id="boardRange"><option value="day">今日</option><option value="week" selected>本周</option><option value="month">本月</option><option value="all">历史总榜</option></select></label>
+    <button id="syncNow" class="secondary">同步局域网</button>
+    <span id="lanStatus" class="hint">未连接房间</span>
     <div id="board" class="board"></div>
+  </section>
+  <section>
+    <h2>局域网聊天</h2>
+    <div id="chatLog" class="board"><span class="empty">加入局域网后开始聊天</span></div>
+    <form id="chatForm"><input id="chatInput" maxlength="500" placeholder="输入消息…"><button>发送</button></form>
   </section>
 </main>
 
 <script src="core.js"></script>
 <script type="module">
+import { rankEvents, eventFromRecord, createProfile } from './leaderboard.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
 const STORE = 'campus-model-v1';
@@ -140,6 +149,10 @@ let videoUploadPromise = null;
 let videoSelectionId = 0;
 let autoReplay = false;
 let mirrored = false;
+let profile = createProfile(name());
+let lanSocket = null;
+let syncedEvents = [];
+let chatMessages = [];
 
 function loadCadenceModule() {
   if (!cadenceModulePromise) {
@@ -214,30 +227,67 @@ function drawHistory() {
     box.append(item);
   }
 }
+function allEvents() {
+  return [...data.rows.map((row) => eventFromRecord(row, profile)), ...syncedEvents];
+}
 function drawBoard() {
-  const now = Date.now();
-  const sums = new Map();
-  for (const r of data.rows) {
-    if (r.demo || !data.opt['u:' + r.n] || week(r.t) !== week(now)) continue;
-    sums.set(r.n, (sums.get(r.n) || 0) + (Number(r.pts) || 0));
-  }
-  const rows = [...sums].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const rows = rankEvents(allEvents(), $('boardRange')?.value || 'week');
   const board = $('board');
   board.replaceChildren();
-  if (!rows.length) {
-    board.textContent = '暂无公开积分';
-    return;
-  }
-  let rank = 0;
-  let last = null;
-  rows.forEach(([n, v], i) => {
-    if (v !== last) rank = i + 1;
-    last = v;
+  if (!rows.length) { board.textContent = '暂无可用积分'; return; }
+  rows.forEach((row, index) => {
     const line = document.createElement('div');
-    line.textContent = `${rank}. ${n} ${v} 分`;
+    line.textContent = `${index + 1}. ${row.username} ${row.points} 分 · ${row.repetitions} 次 · ${Math.round(row.durationSeconds)} 秒`;
     board.append(line);
   });
 }
+function drawChat() {
+  const box = $('chatLog'); box.replaceChildren();
+  if (!chatMessages.length) { box.innerHTML = '<span class="empty">加入局域网后开始聊天</span>'; return; }
+  for (const message of chatMessages.slice(-100)) {
+    const line = document.createElement('div');
+    line.textContent = `${message.username}：${message.text}`;
+    box.append(line);
+  }
+}
+async function connectLan() {
+  const wsUrl = new URLSearchParams(location.search).get('ws');
+  if (wsUrl && !lanSocket) {
+    lanSocket = new WebSocket(wsUrl);
+    lanSocket.onopen = () => { $('lanStatus').textContent = '局域网已连接'; syncLan(); };
+    lanSocket.onclose = () => { $('lanStatus').textContent = '局域网已断开'; lanSocket = null; };
+    lanSocket.onerror = () => { $('lanStatus').textContent = '局域网连接失败'; };
+    lanSocket.onmessage = (event) => {
+      const message = JSON.parse(event.data);
+      if (message.type === 'events') { syncedEvents = message.events || []; drawBoard(); }
+      if (message.type === 'chat') { chatMessages.push(message); drawChat(); }
+    };
+  }
+  try {
+    const response = await fetch(apiUrl('/events'));
+    if (!response.ok) throw new Error('offline');
+    const payload = await response.json();
+    syncedEvents = payload.events || [];
+    const chat = await fetch(apiUrl('/chat'));
+    if (chat.ok) chatMessages = (await chat.json()).messages || [];
+    $('lanStatus').textContent = '局域网 HTTP 已连接';
+    draw(); drawChat();
+  } catch (_) {
+    $('lanStatus').textContent = '未连接房间';
+  }
+}
+async function syncLan() {
+  const payload = { profile, events: allEvents() };
+  if (lanSocket?.readyState === WebSocket.OPEN) {
+    lanSocket.send(JSON.stringify({ type: 'events', ...payload }));
+    return;
+  }
+  try {
+    const response = await fetch(apiUrl('/events'), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
+    if (response.ok) { syncedEvents = (await response.json()).events || syncedEvents; drawBoard(); }
+  } catch (_) { /* local-only mode */ }
+}
+
 function draw() {
   showExercise();
   drawHistory();
@@ -767,7 +817,9 @@ function finish(auto, reason) {
     version: 'model-v1-wasm',
   };
   data.rows.push(record);
+  profile = { ...profile, username: name() };
   const saved = save();
+  syncLan();
   draw();
 
   const metric = ex.type === 'hold'
@@ -786,7 +838,20 @@ function finish(auto, reason) {
   $('mPointsLabel').textContent = demo ? '积分（演示）' : '入账积分';
 }
 
-$('who').oninput = draw;
+$('who').oninput = () => { profile.username = name(); draw(); };
+$('boardRange').onchange = drawBoard;
+$('syncNow').onclick = syncLan;
+$('chatForm').onsubmit = (event) => {
+  event.preventDefault();
+  const text = $('chatInput').value.trim();
+  if (!text || lanSocket?.readyState !== WebSocket.OPEN) return;
+  const message = { type: 'chat', username: name(), profileId: profile.profileId, text, sentAt: Date.now() };
+  lanSocket.send(JSON.stringify(message));
+  chatMessages.push(message); drawChat();
+  $('chatInput').value = '';
+};
+connectLan();
+drawChat();
 $('who').addEventListener('change', refreshVideoLibrary);
 $('kind').onchange = () => { showExercise(); if (!run) resetMetrics(); };
 $('pub').onchange = () => {

@@ -464,6 +464,8 @@ async function handleEvents(req, res) {
   for (const event of events) {
     if (!event?.eventId || known.has(event.eventId)) continue;
     if (Number(event.points) < 0 || Number(event.points) > 10000) continue;
+    // Demo runs are shown in the UI but must never enter the shared ranking.
+    if (event.demo === true) continue;
     store.workoutEvents.push(event); known.add(event.eventId);
   }
   saveStore(); broadcast({ type: 'events', events: store.workoutEvents });

@@ -841,14 +841,27 @@ function finish(auto, reason) {
 $('who').oninput = () => { profile.username = name(); draw(); };
 $('boardRange').onchange = drawBoard;
 $('syncNow').onclick = syncLan;
-$('chatForm').onsubmit = (event) => {
+$('chatForm').onsubmit = async (event) => {
   event.preventDefault();
   const text = $('chatInput').value.trim();
-  if (!text || lanSocket?.readyState !== WebSocket.OPEN) return;
-  const message = { type: 'chat', username: name(), profileId: profile.profileId, text, sentAt: Date.now() };
-  lanSocket.send(JSON.stringify(message));
-  chatMessages.push(message); drawChat();
-  $('chatInput').value = '';
+  if (!text) return;
+  const message = { username: name(), profileId: profile.profileId, text, sentAt: Date.now() };
+  try {
+    if (lanSocket?.readyState === WebSocket.OPEN) {
+      lanSocket.send(JSON.stringify({ type: 'chat', ...message }));
+    } else {
+      const response = await fetch(apiUrl('/chat'), {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(message),
+      });
+      if (!response.ok) throw new Error('chat request failed');
+    }
+    chatMessages.push(message);
+    drawChat();
+    $('chatInput').value = '';
+    $('lanStatus').textContent = '消息已发送';
+  } catch (_) {
+    $('lanStatus').textContent = '聊天发送失败，请确认服务已启动';
+  }
 };
 connectLan();
 drawChat();

@@ -26,11 +26,13 @@ import com.campus.sport.lan.HostElection
 import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
 import com.campus.sport.lan.QrCode
+import com.campus.sport.lan.Protocol
 import com.campus.sport.lan.QrSaver
 import com.campus.sport.lan.RoomClient
 import com.campus.sport.lan.ApkInstaller
 import com.campus.sport.lan.RoomScanner
 import com.campus.sport.lan.UpdateChecker
+import com.campus.sport.lan.UpdatePolicy
 import com.campus.sport.lan.UpdateClient
 import com.campus.sport.lan.WorkoutEvent
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -69,6 +71,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private var lastCandidates: List<HostElection.Candidate> = emptyList()
     private var pollFailures = 0
     private var failoverRunning = false
+    private var remoteProtocol = 0
     private val rangeKeys = arrayOf("day", "week", "month", "all")
 
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -281,14 +284,25 @@ class LanLeaderboardActivity : AppCompatActivity() {
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
                     val client = RoomClient(room)
-                    if (!client.health()) return@runCatching false
+                    val health = client.healthInfo() ?: return@runCatching false
+                    // A peer speaking an unreadable dialect would silently skew
+                    // the board, so refuse early instead of ranking nonsense.
+                    if (health.protocol > 0 && !Protocol.canRead(health.protocol)) {
+                        return@runCatching false
+                    }
+                    remoteProtocol = health.protocol
                     val merged = client.pushEvents(LanRoom.localStore(this@LanLeaderboardActivity).events())
                     remoteEvents.clear()
                     remoteEvents.addAll(merged)
                     true
                 }.getOrDefault(false)
             }
-            if (!ok) statusText.text = getString(R.string.room_join_failed, room) else updateStatus()
+            if (!ok) {
+                statusText.text = getString(R.string.room_join_failed, room)
+            } else {
+                updateStatus()
+                announceProtocolMismatch()
+            }
             refreshBoard()
             renderChat()
         }
@@ -386,11 +400,62 @@ class LanLeaderboardActivity : AppCompatActivity() {
 
     // ---- update ------------------------------------------------------------
 
+    /**
+     * Checks for a release on open, at most every few hours.
+     *
+     * A newly published version shows up as a question ("要现在更新吗?") together
+     * with its release notes, which double as the announcement.
+     */
+    private fun autoCheckUpdate() {
+        val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val last = prefs.getLong(KEY_LAST_UPDATE_CHECK, 0)
+        val now = System.currentTimeMillis()
+        if (!UpdatePolicy.shouldCheck(last, now)) return
+        prefs.edit().putLong(KEY_LAST_UPDATE_CHECK, now).apply()
+
+        val current = currentVersionName()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { UpdateClient.check(current) }
+            if (result.outcome != UpdateClient.Outcome.UPDATE) return@launch
+            val release = result.release ?: return@launch
+            MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                .setTitle(getString(R.string.update_available_title, release.tag))
+                .setMessage(
+                    getString(
+                        R.string.update_auto_message,
+                        current,
+                        release.tag,
+                        UpdatePolicy.notesPreview(release.notes)
+                            .ifBlank { getString(R.string.update_no_notes) },
+                    ),
+                )
+                .setPositiveButton(R.string.update_now) { _, _ -> downloadUpdate(release) }
+                .setNegativeButton(R.string.update_later, null)
+                .show()
+        }
+    }
+
+    private fun currentVersionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+    }.getOrDefault("?")
+
+    // ---- announce ----------------------------------------------------------
+
+    /** Shows a note when the room speaks a different dialect than this build. */
+    private fun announceProtocolMismatch() {
+        val remote = remoteProtocol
+        if (remote <= 0) return
+        val message = when {
+            Protocol.isNewerThanLocal(remote) -> getString(R.string.compat_peer_newer, remote)
+            Protocol.isOlderButReadable(remote) -> getString(R.string.compat_peer_older, remote)
+            else -> return
+        }
+        statusText.text = message
+    }
+
     /** Asks GitHub for a newer release and offers to install it. */
     private fun checkForUpdate() {
-        val current = runCatching {
-            packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
-        }.getOrDefault("?")
+        val current = currentVersionName()
         Toast.makeText(this, getString(R.string.update_checking, current), Toast.LENGTH_SHORT).show()
 
         lifecycleScope.launch {
@@ -738,6 +803,8 @@ class LanLeaderboardActivity : AppCompatActivity() {
         const val EXTRA_ROOM = "room"
         private const val POLL_INTERVAL_MS = 2000L
         private const val FAILURES_BEFORE_FAILOVER = 3
+        private const val PREFS = "profile"
+        private const val KEY_LAST_UPDATE_CHECK = "last-update-check"
         private var offeredThisLaunch = false
     }
 }

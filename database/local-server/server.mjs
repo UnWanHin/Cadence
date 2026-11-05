@@ -485,6 +485,7 @@ async function handleApi(req, res, url) {
     sendJson(res, 200, {
       ok: true,
       storage: 'local',
+      protocol: 2,
       activeVideos: store.videos.filter((video) => video.status === 'active').length,
     });
     return true;

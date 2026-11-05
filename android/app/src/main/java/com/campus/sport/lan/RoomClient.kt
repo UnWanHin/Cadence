@@ -21,6 +21,17 @@ class RoomClient(baseUrl: String) {
         true
     }.getOrDefault(false)
 
+    /** What the room says about itself: protocol dialect and stored events. */
+    data class Health(val protocol: Int, val events: Int)
+
+    fun healthInfo(): Health? {
+        val body = runCatching { request("GET", "/api/v1/health") }.getOrNull() ?: return null
+        val map = runCatching { RoomJson.readObject(body) }.getOrNull() ?: return null
+        val protocol = (WorkoutEvent.num(map["protocol"], 0.0)).toInt()
+        val events = (WorkoutEvent.num(map["events"], 0.0)).toInt()
+        return Health(protocol, events)
+    }
+
     /** Round-trip time of a health probe, or -1 when the room is unreachable. */
     fun latencyMs(): Long {
         val start = System.nanoTime()

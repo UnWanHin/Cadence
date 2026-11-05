@@ -130,6 +130,7 @@ public final class RoomHttpServer {
                 Map<String, Object> body = new LinkedHashMap<>();
                 body.put("ok", true);
                 body.put("storage", "room");
+                body.put("protocol", Protocol.VERSION);
                 body.put("events", store.events().size());
                 return Response.json(200, body);
             }

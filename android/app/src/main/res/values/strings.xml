@@ -139,4 +139,9 @@
     <string name="update_need_permission">需要允许本应用安装应用，请在设置里打开后重试</string>
     <string name="update_offline">连不上 GitHub，检查网络后重试</string>
     <string name="update_no_release">仓库还没有发布版本</string>
+    <string name="update_now">现在更新</string>
+    <string name="update_later">稍后</string>
+    <string name="update_auto_message">当前版本 %1$s，最新版本 %2$s\n\n%3$s</string>
+    <string name="compat_peer_newer">房间里有更新版本的设备（协议 %1$d），部分内容可能显示不全</string>
+    <string name="compat_peer_older">房间里有旧版本的设备（协议 %1$d），已按兼容方式显示</string>
 </resources>

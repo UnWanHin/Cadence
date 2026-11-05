@@ -1,9 +1,0 @@
-# ninja log v5
-0	169	1793883318340180485	CMakeFiles/cadence.dir/jni_bridge.cpp.o	26c1084cb50385b8
-1	265	1793883318434178553	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/repetition_counter.cpp.o	c6e68839a9246235
-1	278	1793883318449178244	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/workout_session.cpp.o	a9e3b83541db645b
-1	282	1793883318452178183	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/geometry.cpp.o	f56cf0a6e331e3b3
-2	282	1793883318453585857	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/wasm_api.cpp.o	1119d5ba743c5db4
-1	289	1793883318459178039	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/exercise_rules.cpp.o	a6018392e5b84986
-1	324	1793883318494177319	CMakeFiles/cadence.dir/home/hiraeth/Documents/Github/Projects/Cadence/src/cadence/pose_features.cpp.o	4a792c9dea696a9f
-324	339	1793883318510176990	/home/hiraeth/Documents/Github/Projects/Cadence/android/app/build/intermediates/cxx/Debug/73414y1y/obj/x86_64/libcadence.so	171627fa8ecf4752

@@ -133,6 +133,13 @@
                 android:text="@string/room_show_qr" />
         </LinearLayout>
 
+        <Button
+            android:id="@+id/discoverButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/room_discover" />
+
         <!-- board -->
         <Spinner
             android:id="@+id/rangeSpinner"

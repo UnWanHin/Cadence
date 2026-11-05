@@ -27,6 +27,8 @@ import com.campus.sport.R
 class LanRoomService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
+    private var announcer: RoomDiscovery.Announcer? = null
+    private var roomName: String = ""
     private val handler = Handler(Looper.getMainLooper())
     private var lastStatus: String = ""
 
@@ -56,6 +58,8 @@ class LanRoomService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val port = intent?.getIntExtra(EXTRA_PORT, LanRoom.DEFAULT_PORT) ?: LanRoom.DEFAULT_PORT
+        roomName = intent?.getStringExtra(EXTRA_ROOM_NAME)
+            ?: LanRoom.username(applicationContext) + " 的房间"
         startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.room_notification_starting)))
 
         val started = runCatching { LanRoom.startServer(applicationContext, port) }
@@ -65,6 +69,7 @@ class LanRoomService : Service() {
             return START_NOT_STICKY
         }
 
+        startAnnouncer(started.getOrThrow())
         acquireWakeLock()
         handler.removeCallbacks(refreshStatus)
         handler.post(refreshStatus)
@@ -73,12 +78,28 @@ class LanRoomService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacks(refreshStatus)
+        stopAnnouncer()
         releaseWakeLock()
         LanRoom.stopServer()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    // ---- discovery ---------------------------------------------------------
+
+    /** Answers "any rooms here?" probes so others can find this room by name. */
+    private fun startAnnouncer(roomPort: Int) {
+        stopAnnouncer()
+        announcer = runCatching {
+            RoomDiscovery.Announcer(RoomDiscovery.DEFAULT_PORT, roomPort, roomName).also { it.start() }
+        }.getOrNull()
+    }
+
+    private fun stopAnnouncer() {
+        runCatching { announcer?.close() }
+        announcer = null
+    }
 
     // ---- notification ------------------------------------------------------
 
@@ -145,6 +166,7 @@ class LanRoomService : Service() {
 
     companion object {
         const val EXTRA_PORT = "port"
+        const val EXTRA_ROOM_NAME = "roomName"
         private const val CHANNEL_ID = "cadence-room"
         private const val NOTIFICATION_ID = 4321
         private const val WAKE_LOCK_TAG = "Cadence::LanRoom"

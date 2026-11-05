@@ -21,6 +21,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
+import dgram from 'node:dgram';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -631,6 +632,30 @@ server.on('clientError', (error, socket) => {
   }
 });
 
+// --- room discovery -------------------------------------------------------
+// The APK scans for rooms by broadcasting on DISCOVERY_PORT. Announcing here
+// means a laptop-hosted room shows up in the phone's "search nearby" list, the
+// same way a phone-hosted room announces itself.
+const DISCOVERY_PORT = Number(process.env.DISCOVERY_PORT || 8788);
+const DISCOVERY_MAGIC = 'CADENCE_ROOM_V1';
+const ROOM_NAME = process.env.ROOM_NAME || '电脑的房间';
+
+const discoverySocket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+discoverySocket.on('message', (message, remote) => {
+  if (message.toString('utf8').trim() !== DISCOVERY_MAGIC) return;
+  const reply = Buffer.from(
+    JSON.stringify({ app: 'cadence-room', name: ROOM_NAME, port: PORT }),
+    'utf8',
+  );
+  discoverySocket.send(reply, remote.port, remote.address, () => {});
+});
+discoverySocket.on('error', (error) => {
+  console.error(`房间广播不可用: ${error.message}`);
+});
+discoverySocket.bind(DISCOVERY_PORT, () => {
+  discoverySocket.setBroadcast(true);
+});
+
 server.listen(PORT, HOST, () => {
   console.log('校园智能运动平台 · 局域网本地服务');
   console.log(`  本机页面: http://127.0.0.1:${PORT}/`);
@@ -640,4 +665,5 @@ server.listen(PORT, HOST, () => {
   console.log(`  接口前缀: ${API_PREFIX}`);
   console.log(`  数据目录: ${DATA_ROOT}`);
   console.log(`  上传上限: ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB`);
+  console.log(`  房间广播: ${ROOM_NAME}（UDP ${DISCOVERY_PORT}）`);
 });

@@ -22,6 +22,7 @@ import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
 import com.campus.sport.lan.QrCode
 import com.campus.sport.lan.RoomClient
+import com.campus.sport.lan.RoomScanner
 import com.campus.sport.lan.WorkoutEvent
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.journeyapps.barcodescanner.ScanContract
@@ -98,6 +99,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         findViewById<Button>(R.id.joinButton).setOnClickListener { joinRoom() }
         findViewById<Button>(R.id.chatSend).setOnClickListener { sendChat() }
         findViewById<Button>(R.id.scanButton).setOnClickListener { startScan() }
+        findViewById<Button>(R.id.discoverButton).setOnClickListener { discoverRooms() }
         findViewById<Button>(R.id.showQrButton).setOnClickListener { showMyQr() }
         findViewById<Button>(R.id.usernameSave).setOnClickListener { saveUsername() }
 
@@ -138,7 +140,17 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private fun toggleHosting() {
         if (LanRoom.isHosting()) {
             LanRoom.stopHosting(this)
+            // The room we were polling was our own; drop it so polling stops
+            // dialling a server that no longer exists.
+            if (remoteRoom?.startsWith("http://127.0.0.1") == true) {
+                remoteRoom = null
+                remoteEvents.clear()
+                remoteChat.clear()
+                roomInput.setText("")
+            }
             updateStatus()
+            refreshBoard()
+            renderChat()
             Toast.makeText(this, R.string.room_host_stopped, Toast.LENGTH_SHORT).show()
             return
         }
@@ -148,6 +160,12 @@ class LanLeaderboardActivity : AppCompatActivity() {
             // The service starts asynchronously; give it a moment before reporting.
             delay(700)
             if (LanRoom.isHosting()) {
+                // Hosting is authoritative for this device: join it right away so
+                // the board and chat work without a second manual step.
+                val port = LanRoom.hostingPort() ?: LanRoom.DEFAULT_PORT
+                val selfAddress = "127.0.0.1:$port"
+                roomInput.setText(selfAddress)
+                joinRoom()
                 updateStatus()
                 val url = LanRoom.hostingUrls().firstOrNull()
                 Toast.makeText(
@@ -196,6 +214,30 @@ class LanLeaderboardActivity : AppCompatActivity() {
             else getString(R.string.room_join_failed, room)
             refreshBoard()
             renderChat()
+        }
+    }
+
+    // ---- discovery ---------------------------------------------------------
+
+    /** Asks the network for rooms and lets the user pick one. */
+    private fun discoverRooms() {
+        Toast.makeText(this, R.string.room_searching, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val rooms = withContext(Dispatchers.IO) { RoomScanner.scan(this@LanLeaderboardActivity) }
+            if (rooms.isEmpty()) {
+                Toast.makeText(this@LanLeaderboardActivity, R.string.room_search_empty, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val labels = rooms.map { it.toString() }.toTypedArray()
+            MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                .setTitle(getString(R.string.room_search_result, rooms.size))
+                .setItems(labels) { _, which ->
+                    val picked = rooms[which]
+                    roomInput.setText(picked.address)
+                    joinRoom()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
         }
     }
 

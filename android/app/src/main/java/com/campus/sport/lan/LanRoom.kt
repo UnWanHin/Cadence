@@ -92,9 +92,11 @@ object LanRoom {
     // ---- hosting -----------------------------------------------------------
 
     /** Starts the foreground service that hosts this room. */
-    fun startHosting(context: Context, port: Int = DEFAULT_PORT) {
+    fun startHosting(context: Context, port: Int = DEFAULT_PORT, roomName: String = "") {
+        val name = roomName.ifBlank { "${username(context)} 的房间" }
         val intent = Intent(context, LanRoomService::class.java).apply {
             putExtra(LanRoomService.EXTRA_PORT, port)
+            putExtra(LanRoomService.EXTRA_ROOM_NAME, name)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(intent)

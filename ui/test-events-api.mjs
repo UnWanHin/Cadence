@@ -83,6 +83,28 @@ try {
     event({ eventId: 'p2-a', profileId: 'p2', points: 60 }),
   ] });
   check((await list()).length === 3, 'events from different profiles are kept');
+// A browser POSTing JSON cross-origin preflights with OPTIONS. Answering 405
+// there makes the real request never happen, which breaks HTML <-> phone.
+{
+  const preflight = await fetch(`${BASE}/events`, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: 'http://127.0.0.1:9999',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type',
+    },
+  });
+  check(preflight.ok, 'OPTIONS preflight on /events is answered');
+  check(
+    preflight.headers.get('access-control-allow-origin') === '*',
+    'preflight allows any origin',
+  );
+  check(
+    (preflight.headers.get('access-control-allow-headers') || '').toLowerCase().includes('content-type'),
+    'preflight allows the content-type header',
+  );
+}
+
 } finally {
   server.kill();
   fs.rmSync(dataDir, { recursive: true, force: true });

@@ -106,8 +106,10 @@ public final class RoomHttpServer {
 
     private Response route(Request request) {
         String path = request.path;
+        // A browser POSTing JSON cross-origin preflights with OPTIONS. Answer
+        // before any routing, otherwise the real request never gets sent.
+        if ("OPTIONS".equals(request.method)) return Response.empty(204);
         if (!path.startsWith(API_PREFIX)) {
-            if ("OPTIONS".equals(request.method)) return Response.empty(204);
             return serveStatic(path);
         }
         String api = path.substring(API_PREFIX.length());

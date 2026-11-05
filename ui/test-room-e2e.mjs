@@ -23,6 +23,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8797);
 const BASE = process.env.BASE_URL || `http://127.0.0.1:${PORT}/`;
+// The API may live on a different origin than the page (page served here, room
+// hosted by the phone). Defaults to same-origin.
+const API = process.env.API_BASE || `http://127.0.0.1:${PORT}/api/v1`;
 
 async function loadChromium() {
   // Try the usual resolution first, then PLAYWRIGHT_PATH, then a local install.
@@ -136,7 +139,7 @@ try {
   check(once === 1, 'message is rendered exactly once on the receiving page');
 
   // Leaderboard: inject a training event as a third client, A must update.
-  await fetch(`http://127.0.0.1:${PORT}/api/v1/events`, {
+  await fetch(`${API}/events`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({

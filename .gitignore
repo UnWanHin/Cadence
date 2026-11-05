@@ -8,3 +8,4 @@ android/keystore.properties
 android/release.jks
 *.jks
 *.keystore
+dist/

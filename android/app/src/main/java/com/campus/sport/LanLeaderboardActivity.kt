@@ -18,6 +18,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.campus.sport.lan.ChatMessage
+import com.campus.sport.lan.HostElection
 import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
 import com.campus.sport.lan.QrCode
@@ -57,6 +58,9 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private val remoteEvents = mutableListOf<WorkoutEvent>()
     private val remoteChat = mutableListOf<ChatMessage>()
     private val chatDirty = AtomicBoolean(false)
+    private var lastCandidates: List<HostElection.Candidate> = emptyList()
+    private var pollFailures = 0
+    private var failoverRunning = false
     private val rangeKeys = arrayOf("day", "week", "month", "all")
 
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
@@ -198,6 +202,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         val normalized = if (address.startsWith("http")) address else "http://$address"
         val room = normalized.trimEnd('/')
         remoteRoom = room
+        pollFailures = 0
         statusText.text = getString(R.string.room_joining, room)
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
@@ -219,26 +224,64 @@ class LanLeaderboardActivity : AppCompatActivity() {
 
     // ---- discovery ---------------------------------------------------------
 
-    /** Asks the network for rooms and lets the user pick one. */
+    /** Asks the network for rooms, measures them, and lets the user pick one. */
     private fun discoverRooms() {
         Toast.makeText(this, R.string.room_searching, Toast.LENGTH_SHORT).show()
         lifecycleScope.launch {
-            val rooms = withContext(Dispatchers.IO) { RoomScanner.scan(this@LanLeaderboardActivity) }
-            if (rooms.isEmpty()) {
+            val candidates = collectCandidates()
+            if (candidates.isEmpty()) {
                 Toast.makeText(this@LanLeaderboardActivity, R.string.room_search_empty, Toast.LENGTH_LONG).show()
                 return@launch
             }
-            val labels = rooms.map { it.toString() }.toTypedArray()
+            lastCandidates = candidates
+            val labels = candidates.map { describe(it) }.toTypedArray()
             MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
-                .setTitle(getString(R.string.room_search_result, rooms.size))
+                .setTitle(getString(R.string.room_search_result, candidates.size))
                 .setItems(labels) { _, which ->
-                    val picked = rooms[which]
+                    val picked = candidates[which]
                     roomInput.setText(picked.address)
                     joinRoom()
                 }
+                .setPositiveButton(R.string.room_pick_fastest) { _, _ -> electAndJoin(HostElection.MODE_DELAY) }
+                .setNeutralButton(R.string.room_pick_random) { _, _ -> electAndJoin(HostElection.MODE_RANDOM) }
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()
         }
+    }
+
+    private fun describe(candidate: HostElection.Candidate): String {
+        val label = if (candidate.name.isEmpty()) candidate.address else candidate.name
+        val latency = if (candidate.rttMs >= 0) " · ${candidate.rttMs}ms" else " · 无响应"
+        return label + latency + "  " + candidate.address
+    }
+
+    /** Discovers rooms and measures each one on a background thread. */
+    private suspend fun collectCandidates(): List<HostElection.Candidate> = withContext(Dispatchers.IO) {
+        RoomScanner.scan(this@LanLeaderboardActivity).map { room ->
+            val host = room.address.substringBefore(':')
+            val port = room.address.substringAfter(':', "").toIntOrNull() ?: LanRoom.DEFAULT_PORT
+            val latency = runCatching {
+                RoomClient("http://$host:$port").latencyMs()
+            }.getOrDefault(-1L)
+            HostElection.Candidate(room.address, room.address, room.name, latency)
+        }.sortedWith(compareBy({ it.rttMs < 0 }, { it.rttMs }, { it.address }))
+    }
+
+    /** Picks a host by the chosen rule and joins it. */
+    private fun electAndJoin(mode: String) {
+        val picked = HostElection.elect(lastCandidates, mode, System.currentTimeMillis())
+        if (picked == null) {
+            Toast.makeText(this, R.string.room_search_empty, Toast.LENGTH_LONG).show()
+            return
+        }
+        val why = if (mode == HostElection.MODE_RANDOM) {
+            getString(R.string.room_elected_random)
+        } else {
+            getString(R.string.room_elected_fastest)
+        }
+        roomInput.setText(picked.address)
+        statusText.text = why + " " + picked.address
+        joinRoom()
     }
 
     // ---- QR ----------------------------------------------------------------
@@ -309,6 +352,31 @@ class LanLeaderboardActivity : AppCompatActivity() {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
+    /**
+     * Re-runs discovery and moves the room to the next best host.
+     *
+     * Events live on every device, so the new host is filled by the pushes that
+     * follow; nothing is lost when the old host disappears.
+     */
+    private fun maybeFailover() {
+        if (failoverRunning) return
+        val dead = remoteRoom ?: return
+        failoverRunning = true
+        lifecycleScope.launch {
+            val candidates = runCatching { collectCandidates() }.getOrDefault(emptyList())
+                .filter { "http://${'$'}{it.address}" != dead }
+            val picked = HostElection.elect(candidates, HostElection.MODE_DELAY, System.currentTimeMillis())
+            if (picked != null) {
+                roomInput.setText(picked.address)
+                statusText.text = getString(R.string.room_failover, picked.address)
+                joinRoom()
+            } else {
+                statusText.text = getString(R.string.room_failover_none)
+            }
+            failoverRunning = false
+        }
+    }
+
     // ---- polling -----------------------------------------------------------
 
     private fun startPolling() {
@@ -332,7 +400,17 @@ class LanLeaderboardActivity : AppCompatActivity() {
                 val chat = client.fetchChat()
                 events to chat
             }.getOrNull()
-        } ?: return
+        }
+        if (snapshot == null) {
+            pollFailures += 1
+            // The host went away (left, locked, crashed). Look for another one
+            // instead of spinning against a dead address forever.
+            if (pollFailures >= FAILURES_BEFORE_FAILOVER && !LanRoom.isHosting()) {
+                maybeFailover()
+            }
+            return
+        }
+        pollFailures = 0
 
         remoteEvents.clear()
         remoteEvents.addAll(snapshot.first)
@@ -459,5 +537,6 @@ class LanLeaderboardActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_ROOM = "room"
         private const val POLL_INTERVAL_MS = 2000L
+        private const val FAILURES_BEFORE_FAILOVER = 3
     }
 }

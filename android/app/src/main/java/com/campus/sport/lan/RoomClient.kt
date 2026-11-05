@@ -21,6 +21,14 @@ class RoomClient(baseUrl: String) {
         true
     }.getOrDefault(false)
 
+    /** Round-trip time of a health probe, or -1 when the room is unreachable. */
+    fun latencyMs(): Long {
+        val start = System.nanoTime()
+        val reachable = runCatching { request("GET", "/api/v1/health") }.isSuccess
+        if (!reachable) return -1
+        return (System.nanoTime() - start) / 1_000_000
+    }
+
     fun fetchEvents(): List<WorkoutEvent> {
         val payload = RoomJson.readObject(request("GET", "/api/v1/events"))
         val raw = payload["events"] as? List<*> ?: return emptyList()

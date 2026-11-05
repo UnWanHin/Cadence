@@ -3,3 +3,4 @@ android/.gradle/
 android/build/
 android/app/build/
 build-wasm/
+android/app/.cxx/

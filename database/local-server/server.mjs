@@ -26,7 +26,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const UI_ROOT = path.join(PROJECT_ROOT, 'ui');
-const DATA_ROOT = path.join(__dirname, 'data');
+const DATA_ROOT = process.env.DATA_DIR
+  ? path.resolve(process.env.DATA_DIR)
+  : path.join(__dirname, 'data');
 const VIDEO_ROOT = path.join(DATA_ROOT, 'videos');
 const STORE_FILE = path.join(DATA_ROOT, 'store.json');
 const API_PREFIX = '/api/v1';

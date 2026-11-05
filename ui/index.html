@@ -124,6 +124,7 @@
 <script src="core.js"></script>
 <script type="module">
 import { rankEvents, eventFromRecord, createProfile } from './leaderboard.js';
+import { createChatStore } from './chat.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
 const STORE = 'campus-model-v1';
@@ -153,6 +154,12 @@ let profile = createProfile(name());
 let lanSocket = null;
 let syncedEvents = [];
 let chatMessages = [];
+let chatPollTimer = 0;
+const chatStore = createChatStore(async (path, options) => {
+  const response = await fetch(apiUrl(path), options);
+  if (!response.ok) throw new Error(`chat ${response.status}`);
+  return response.json();
+});
 
 function loadCadenceModule() {
   if (!cadenceModulePromise) {
@@ -241,6 +248,11 @@ function drawBoard() {
     board.append(line);
   });
 }
+function mergeChatMessages(messages) {
+  const changed = chatStore.merge(messages);
+  chatMessages = chatStore.messages;
+  return changed;
+}
 function drawChat() {
   const box = $('chatLog'); box.replaceChildren();
   if (!chatMessages.length) { box.innerHTML = '<span class="empty">加入局域网后开始聊天</span>'; return; }
@@ -249,6 +261,28 @@ function drawChat() {
     line.textContent = `${message.username}：${message.text}`;
     box.append(line);
   }
+}
+async function pollChat() {
+  if (lanSocket?.readyState === WebSocket.OPEN) return;
+  try {
+    if (await chatStore.pull()) drawChat();
+  } catch (_) { /* offline mode */ }
+}
+// The room service is the only shared store, so both clients have to re-read
+// it: without this each page only ever showed its own data.
+async function pollRoom() {
+  await pollChat();
+  try {
+    const response = await fetch(apiUrl('/events'), { cache: 'no-store' });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const next = payload.events || [];
+    if (JSON.stringify(next) !== JSON.stringify(syncedEvents)) {
+      syncedEvents = next;
+      drawBoard();
+    }
+    $('lanStatus').textContent = '局域网已连接';
+  } catch (_) { /* offline mode */ }
 }
 async function connectLan() {
   const wsUrl = new URLSearchParams(location.search).get('ws');
@@ -260,21 +294,27 @@ async function connectLan() {
     lanSocket.onmessage = (event) => {
       const message = JSON.parse(event.data);
       if (message.type === 'events') { syncedEvents = message.events || []; drawBoard(); }
-      if (message.type === 'chat') { chatMessages.push(message); drawChat(); }
+      if (message.type === 'chat') { mergeChatMessages([message]); drawChat(); }
     };
   }
   try {
-    const response = await fetch(apiUrl('/events'));
+    const response = await fetch(apiUrl('/events'), { cache: 'no-store' });
     if (!response.ok) throw new Error('offline');
     const payload = await response.json();
     syncedEvents = payload.events || [];
-    const chat = await fetch(apiUrl('/chat'));
-    if (chat.ok) chatMessages = (await chat.json()).messages || [];
+    await chatStore.pull();
+    chatMessages = chatStore.messages;
     $('lanStatus').textContent = '局域网 HTTP 已连接';
     draw(); drawChat();
   } catch (_) {
     $('lanStatus').textContent = '未连接房间';
   }
+  // Poll regardless: the room may come up after the page loaded.
+  startChatPolling();
+}
+function startChatPolling() {
+  if (chatPollTimer) return;
+  chatPollTimer = setInterval(pollRoom, 2000);
 }
 async function syncLan() {
   const payload = { profile, events: data.rows.filter((row) => !row.demo).map((row) => eventFromRecord(row, profile)) };
@@ -845,17 +885,15 @@ $('chatForm').onsubmit = async (event) => {
   event.preventDefault();
   const text = $('chatInput').value.trim();
   if (!text) return;
-  const message = { username: name(), profileId: profile.profileId, text, sentAt: Date.now() };
+  const sender = { username: name(), profileId: profile.profileId };
   try {
     if (lanSocket?.readyState === WebSocket.OPEN) {
-      lanSocket.send(JSON.stringify({ type: 'chat', ...message }));
+      lanSocket.send(JSON.stringify({ type: 'chat', ...sender, text, sentAt: Date.now() }));
+      mergeChatMessages([{ ...sender, text, sentAt: Date.now() }]);
     } else {
-      const response = await fetch(apiUrl('/chat'), {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(message),
-      });
-      if (!response.ok) throw new Error('chat request failed');
+      await chatStore.send(sender, text);
+      chatMessages = chatStore.messages;
     }
-    chatMessages.push(message);
     drawChat();
     $('chatInput').value = '';
     $('lanStatus').textContent = '消息已发送';
@@ -946,6 +984,7 @@ document.onvisibilitychange = () => {
 };
 window.addEventListener('pagehide', () => {
   releaseCamera();
+  if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = 0; }
   if (run) finish(false);
 });
 

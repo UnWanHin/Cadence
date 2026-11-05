@@ -19,20 +19,29 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # The runner already ships an Android SDK; the setup-android action insists
+      # on installing the retired "tools" package and fails, so point at the
+      # preinstalled one and install only what this build needs.
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
       - name: Install SDK packages
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0" \
-                     "ndk;27.0.12077973" "cmake;3.22.1"
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME" -name sdkmanager -type f | head -1)"
+          fi
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0" \
+                        "ndk;27.0.12077973" "cmake;3.22.1"
 
       # The keystore must be the same one used by every previous release,
       # otherwise Android refuses to install the update over the old app.

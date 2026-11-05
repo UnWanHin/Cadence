@@ -1,7 +1,10 @@
 package com.campus.sport
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -17,11 +20,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import com.campus.sport.lan.AppShareCode
 import com.campus.sport.lan.ChatMessage
 import com.campus.sport.lan.HostElection
 import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
 import com.campus.sport.lan.QrCode
+import com.campus.sport.lan.QrSaver
 import com.campus.sport.lan.RoomClient
 import com.campus.sport.lan.RoomScanner
 import com.campus.sport.lan.WorkoutEvent
@@ -66,6 +71,10 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
         val contents = result?.contents
         if (contents.isNullOrBlank()) return@registerForActivityResult
+        if (AppShareCode.isShareCode(contents)) {
+            onAppShareScanned(contents)
+            return@registerForActivityResult
+        }
         val address = QrCode.parseRoomAddress(contents)
         if (address == null) {
             Toast.makeText(this, R.string.room_scan_invalid, Toast.LENGTH_LONG).show()
@@ -74,6 +83,58 @@ class LanLeaderboardActivity : AppCompatActivity() {
         roomInput.setText(address)
         joinRoom()
     }
+
+    /** A scanned "install this app" code: offer the download and the room in one place. */
+    private fun onAppShareScanned(payload: String) {
+        val apkUrl = AppShareCode.apkUrlOf(payload)
+        val room = AppShareCode.roomOf(payload)
+        val builder = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.share_scanned_title)
+            .setMessage(getString(R.string.share_scanned_message, apkUrl))
+
+        if (room != null) {
+            builder.setPositiveButton(R.string.share_scanned_join) { _, _ ->
+                roomInput.setText(room)
+                joinRoom()
+            }
+            builder.setNeutralButton(R.string.share_scanned_download) { _, _ -> openUrl(apkUrl) }
+        } else {
+            builder.setPositiveButton(R.string.share_scanned_download) { _, _ -> openUrl(apkUrl) }
+        }
+        builder.setNegativeButton(android.R.string.cancel, null).show()
+    }
+
+    private fun openUrl(url: String) {
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { Toast.makeText(this, getString(R.string.share_open_failed, url), Toast.LENGTH_LONG).show() }
+    }
+
+    /** Gallery write needs a permission below Android 10 only. */
+    private var pendingQr: Bitmap? = null
+    private val storagePermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        val bitmap = pendingQr
+        pendingQr = null
+        if (granted && bitmap != null) saveQr(bitmap) else
+            Toast.makeText(this, R.string.room_qr_save_denied, Toast.LENGTH_LONG).show()
+    }
+
+    private fun saveQr(bitmap: Bitmap) {
+        if (QrSaver.needsPermission() && !hasStoragePermission()) {
+            pendingQr = bitmap
+            storagePermission.launch(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            return
+        }
+        val location = QrSaver.save(this, bitmap, "cadence-qr")
+        val text = if (location != null) getString(R.string.room_qr_saved, location)
+        else getString(R.string.room_qr_save_failed)
+        Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+    }
+
+    private fun hasStoragePermission(): Boolean =
+        checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
 
     private val notificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -104,6 +165,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         findViewById<Button>(R.id.chatSend).setOnClickListener { sendChat() }
         findViewById<Button>(R.id.scanButton).setOnClickListener { startScan() }
         findViewById<Button>(R.id.discoverButton).setOnClickListener { discoverRooms() }
+        findViewById<Button>(R.id.shareAppButton).setOnClickListener { shareApp() }
         findViewById<Button>(R.id.showQrButton).setOnClickListener { showMyQr() }
         findViewById<Button>(R.id.usernameSave).setOnClickListener { saveUsername() }
 
@@ -228,6 +290,34 @@ class LanLeaderboardActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * On open, look for a room and offer to join.
+     *
+     * This is what closes the loop after installing from a shared QR: the app is
+     * opened for the first time, sees the room that shared it, and asks.
+     */
+    private fun offerNearbyRoom() {
+        if (LanRoom.isHosting() || remoteRoom != null || offeredThisLaunch) return
+        offeredThisLaunch = true
+        lifecycleScope.launch {
+            delay(700)
+            val candidates = runCatching { collectCandidates() }.getOrDefault(emptyList())
+            val best = HostElection.elect(candidates, HostElection.MODE_DELAY, System.currentTimeMillis())
+                ?: return@launch
+            lastCandidates = candidates
+            val label = best.name.ifEmpty { best.address }
+            MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                .setTitle(R.string.room_qr_auto_join_title)
+                .setMessage(getString(R.string.room_qr_auto_join_message, "$label（${best.address}）"))
+                .setPositiveButton(R.string.room_qr_auto_join_yes) { _, _ ->
+                    roomInput.setText(best.address)
+                    joinRoom()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
+        }
+    }
+
     // ---- discovery ---------------------------------------------------------
 
     /** Asks the network for rooms, measures them, and lets the user pick one. */
@@ -304,11 +394,36 @@ class LanLeaderboardActivity : AppCompatActivity() {
     }
 
     private fun showMyQr() {
-        val payload = shareableAddress()
-        if (payload == null) {
+        val payload = shareableAddress() ?: run {
             Toast.makeText(this, R.string.room_qr_empty, Toast.LENGTH_LONG).show()
             return
         }
+        showQrDialog(R.string.room_qr_title, payload, R.string.room_qr_hint)
+    }
+
+    /**
+     * Shares this device's own APK.
+     *
+     * The code points at the file on this device's room server, so the receiver
+     * needs no cable and no store; the room address rides along in the fragment
+     * so the app can offer to join straight after installing.
+     */
+    private fun shareApp() {
+        if (!LanRoom.isHosting()) {
+            Toast.makeText(this, R.string.share_need_hosting, Toast.LENGTH_LONG).show()
+            return
+        }
+        val apkUrl = LanRoom.apkUrl() ?: run {
+            Toast.makeText(this, R.string.share_no_network, Toast.LENGTH_LONG).show()
+            return
+        }
+        val room = LanRoom.bestLanUrl()?.removePrefix("http://")?.trimEnd('/')
+        val payload = AppShareCode.build(apkUrl, room)
+        showQrDialog(R.string.share_qr_title, payload, R.string.share_qr_hint)
+    }
+
+    /** Shows a QR with a button that writes it into the gallery. */
+    private fun showQrDialog(titleRes: Int, payload: String, hintRes: Int) {
         val bitmap = QrCode.encode(payload, 720)
         if (bitmap == null) {
             Toast.makeText(this, R.string.room_qr_unavailable, Toast.LENGTH_SHORT).show()
@@ -337,16 +452,17 @@ class LanLeaderboardActivity : AppCompatActivity() {
         )
         container.addView(
             TextView(this).apply {
-                text = getString(R.string.room_qr_hint)
+                text = getString(hintRes)
                 textSize = 12f
                 gravity = android.view.Gravity.CENTER
             },
         )
 
         MaterialAlertDialogBuilder(this)
-            .setTitle(R.string.room_qr_title)
+            .setTitle(titleRes)
             .setView(container)
-            .setPositiveButton(android.R.string.ok, null)
+            .setPositiveButton(R.string.room_qr_save) { _, _ -> saveQr(bitmap) }
+            .setNegativeButton(android.R.string.cancel, null)
             .show()
     }
 
@@ -544,5 +660,6 @@ class LanLeaderboardActivity : AppCompatActivity() {
         const val EXTRA_ROOM = "room"
         private const val POLL_INTERVAL_MS = 2000L
         private const val FAILURES_BEFORE_FAILOVER = 3
+        private var offeredThisLaunch = false
     }
 }

@@ -119,6 +119,9 @@ object LanRoom {
             val webRoot = File(context.applicationContext.filesDir, "room-web")
                 .takeIf { it.isDirectory }
             val instance = RoomHttpServer(store, webRoot, port)
+            // Hand out our own installer so a nearby phone can grab the app
+            // without a cable or a store listing.
+            runCatching { instance.setApkFile(File(context.applicationInfo.sourceDir)) }
             instance.start()
             server = instance
             return instance.port()
@@ -141,6 +144,12 @@ object LanRoom {
         val port = hostingPort() ?: return null
         val address = RoomHttpServer.lanAddresses().firstOrNull() ?: return null
         return "http://$address:$port/"
+    }
+
+    /** URL that downloads this device's installed APK. */
+    fun apkUrl(): String? {
+        val base = bestLanUrl()?.trimEnd('/') ?: return null
+        return base + RoomHttpServer.APK_PATH
     }
 
     fun hostingUrls(): List<String> {

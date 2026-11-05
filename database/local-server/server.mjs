@@ -588,6 +588,25 @@ function lanAddresses() {
   return addresses;
 }
 
+/** Streams the built APK so a desktop room can be shared by QR too. */
+async function serveApk(req, res) {
+  try {
+    const stat = await fsp.stat(APK_FILE);
+    res.writeHead(200, {
+      'Content-Type': 'application/vnd.android.package-archive',
+      'Content-Length': stat.size,
+      'Content-Disposition': 'attachment; filename="cadence.apk"',
+    });
+    if (req.method === 'HEAD') {
+      res.end();
+      return;
+    }
+    fs.createReadStream(APK_FILE).pipe(res);
+  } catch (_) {
+    sendError(res, 404, 'NO_APK', '没有找到安装包');
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   setCommonHeaders(res);
   if (req.method === 'OPTIONS') {
@@ -606,6 +625,11 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    if (url.pathname === '/app.apk') {
+      await serveApk(req, res);
+      return;
+    }
+
     if (url.pathname.startsWith(`${API_PREFIX}/`)) {
       const handled = await handleApi(req, res, url);
       if (!handled) sendError(res, 404, 'NOT_FOUND', '接口不存在');
@@ -636,6 +660,11 @@ server.on('clientError', (error, socket) => {
 // The APK scans for rooms by broadcasting on DISCOVERY_PORT. Announcing here
 // means a laptop-hosted room shows up in the phone's "search nearby" list, the
 // same way a phone-hosted room announces itself.
+// Hand out the debug APK so a laptop room can be shared the same way a phone's
+// room is: one QR, no cable.
+const APK_FILE = process.env.APK_FILE
+  || path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+
 const DISCOVERY_PORT = Number(process.env.DISCOVERY_PORT || 8788);
 const DISCOVERY_MAGIC = 'CADENCE_ROOM_V1';
 const ROOM_NAME = process.env.ROOM_NAME || '电脑的房间';

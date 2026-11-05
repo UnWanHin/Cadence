@@ -107,4 +107,21 @@
     <string name="room_channel_name">局域网房间</string>
     <string name="room_channel_description">保持房间在后台可访问</string>
     <string name="room_permission_notification">允许通知后，房间状态会显示在通知栏</string>
+    <string name="share_app">分享本应用（生成安装二维码）</string>
+    <string name="share_qr_title">扫码安装本应用</string>
+    <string name="share_qr_hint">用相机扫码下载安装包；装好后打开应用会问你要不要加入房间</string>
+    <string name="share_need_hosting">请先开房间，安装包是由本机的房间服务发出的</string>
+    <string name="share_no_network">当前没有可用的局域网地址，连上 Wi-Fi 再试</string>
+    <string name="share_scanned_title">这是一个安装包二维码</string>
+    <string name="share_scanned_message">下载地址：\n%1$s</string>
+    <string name="share_scanned_join">加入该房间</string>
+    <string name="share_scanned_download">去下载</string>
+    <string name="share_open_failed">打不开浏览器：%1$s</string>
+    <string name="room_qr_save">保存到相册</string>
+    <string name="room_qr_saved">已保存到相册：%1$s</string>
+    <string name="room_qr_save_failed">保存失败，请检查存储权限</string>
+    <string name="room_qr_save_denied">没有存储权限，无法保存二维码</string>
+    <string name="room_qr_auto_join_title">发现附近的房间</string>
+    <string name="room_qr_auto_join_message">要加入「%1$s」吗？</string>
+    <string name="room_qr_auto_join_yes">加入</string>
 </resources>

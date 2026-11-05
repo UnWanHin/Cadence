@@ -30,11 +30,15 @@ import java.util.Map;
 public final class RoomHttpServer {
 
     public static final String API_PREFIX = "/api/v1";
+    public static final String APK_PATH = "/app.apk";
+    public static final String APK_FILE_NAME = "cadence.apk";
+    private static final String APK_CONTENT_TYPE = "application/vnd.android.package-archive";
     private static final int MAX_BODY_BYTES = 4 * 1024 * 1024;
 
     private final RoomStore store;
     private final File webRoot;
     private final int port;
+    private volatile File apkFile;
     private ServerSocket serverSocket;
     private Thread acceptThread;
     private volatile boolean running;
@@ -43,6 +47,11 @@ public final class RoomHttpServer {
         this.store = store;
         this.webRoot = webRoot;
         this.port = port;
+    }
+
+    /** Lets the host hand out its own APK over the same port. */
+    public void setApkFile(File file) {
+        this.apkFile = file != null && file.isFile() ? file : null;
     }
 
     public int port() {
@@ -109,6 +118,7 @@ public final class RoomHttpServer {
         // A browser POSTing JSON cross-origin preflights with OPTIONS. Answer
         // before any routing, otherwise the real request never gets sent.
         if ("OPTIONS".equals(request.method)) return Response.empty(204);
+        if (APK_PATH.equals(path)) return serveApk();
         if (!path.startsWith(API_PREFIX)) {
             return serveStatic(path);
         }
@@ -185,6 +195,15 @@ public final class RoomHttpServer {
         } catch (RuntimeException error) {
             return Response.error(400, "VALIDATION_ERROR", "请求内容无法解析");
         }
+    }
+
+    private Response serveApk() {
+        File file = apkFile;
+        if (file == null || !file.isFile()) {
+            return Response.error(404, "NOT_FOUND", "本机没有可分享的安装包");
+        }
+        return Response.file(200, APK_CONTENT_TYPE, file,
+                "attachment; filename=\"" + APK_FILE_NAME + "\"");
     }
 
     private Response serveStatic(String requestPath) {
@@ -340,6 +359,8 @@ public final class RoomHttpServer {
         int status;
         String contentType;
         byte[] body;
+        File file;
+        String disposition;
 
         static Response json(int status, Object payload) {
             Response response = new Response();
@@ -356,6 +377,16 @@ public final class RoomHttpServer {
             Map<String, Object> body = new LinkedHashMap<>();
             body.put("error", details);
             return json(status, body);
+        }
+
+        /** Streams from disk: the APK is far too big to buffer in memory. */
+        static Response file(int status, String contentType, File file, String disposition) {
+            Response response = new Response();
+            response.status = status;
+            response.contentType = contentType;
+            response.file = file;
+            response.disposition = disposition;
+            return response;
         }
 
         static Response bytes(int status, String contentType, byte[] body) {
@@ -380,10 +411,26 @@ public final class RoomHttpServer {
             head.append("Cache-Control: no-store\r\n");
             head.append("X-Content-Type-Options: nosniff\r\n");
             head.append("Connection: close\r\n");
+            long length = file != null ? file.length() : (body == null ? 0 : body.length);
             head.append("Content-Type: ").append(contentType).append("\r\n");
-            head.append("Content-Length: ").append(body == null ? 0 : body.length).append("\r\n\r\n");
+            if (disposition != null) head.append("Content-Disposition: ").append(disposition).append("\r\n");
+            head.append("Content-Length: ").append(length).append("\r\n\r\n");
             out.write(head.toString().getBytes(StandardCharsets.ISO_8859_1));
-            if (!headOnly && body != null && body.length > 0) out.write(body);
+
+            if (!headOnly) {
+                if (file != null) {
+                    InputStream in = new java.io.FileInputStream(file);
+                    try {
+                        byte[] chunk = new byte[64 * 1024];
+                        int read;
+                        while ((read = in.read(chunk)) > 0) out.write(chunk, 0, read);
+                    } finally {
+                        in.close();
+                    }
+                } else if (body != null && body.length > 0) {
+                    out.write(body);
+                }
+            }
             out.flush();
         }
 

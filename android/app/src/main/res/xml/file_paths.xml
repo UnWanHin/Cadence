@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Downloaded update packages live here before installation. -->
+    <cache-path name="update" path="update/" />
+</paths>

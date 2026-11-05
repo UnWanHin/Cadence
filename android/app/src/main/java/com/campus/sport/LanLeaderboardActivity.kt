@@ -28,7 +28,10 @@ import com.campus.sport.lan.Leaderboard
 import com.campus.sport.lan.QrCode
 import com.campus.sport.lan.QrSaver
 import com.campus.sport.lan.RoomClient
+import com.campus.sport.lan.ApkInstaller
 import com.campus.sport.lan.RoomScanner
+import com.campus.sport.lan.UpdateChecker
+import com.campus.sport.lan.UpdateClient
 import com.campus.sport.lan.WorkoutEvent
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.journeyapps.barcodescanner.ScanContract
@@ -166,6 +169,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
         findViewById<Button>(R.id.scanButton).setOnClickListener { startScan() }
         findViewById<Button>(R.id.discoverButton).setOnClickListener { discoverRooms() }
         findViewById<Button>(R.id.shareAppButton).setOnClickListener { shareApp() }
+        findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate() }
         findViewById<Button>(R.id.showQrButton).setOnClickListener { showMyQr() }
         findViewById<Button>(R.id.usernameSave).setOnClickListener { saveUsername() }
 
@@ -378,6 +382,80 @@ class LanLeaderboardActivity : AppCompatActivity() {
         roomInput.setText(picked.address)
         statusText.text = why + " " + picked.address
         joinRoom()
+    }
+
+    // ---- update ------------------------------------------------------------
+
+    /** Asks GitHub for a newer release and offers to install it. */
+    private fun checkForUpdate() {
+        val current = runCatching {
+            packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+        }.getOrDefault("?")
+        Toast.makeText(this, getString(R.string.update_checking, current), Toast.LENGTH_SHORT).show()
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { UpdateClient.check(current) }
+            when (result.outcome) {
+                UpdateClient.Outcome.UPDATE -> showUpdateDialog(result)
+                UpdateClient.Outcome.UP_TO_DATE ->
+                    MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                        .setTitle(R.string.update_none_title)
+                        .setMessage(getString(R.string.update_none_message, current, result.release?.tag ?: "—"))
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show()
+                UpdateClient.Outcome.OFFLINE -> Toast.makeText(
+                    this@LanLeaderboardActivity,
+                    R.string.update_offline,
+                    Toast.LENGTH_LONG,
+                ).show()
+                UpdateClient.Outcome.NO_RELEASE -> Toast.makeText(
+                    this@LanLeaderboardActivity,
+                    R.string.update_no_release,
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
+    private fun showUpdateDialog(result: UpdateClient.Result) {
+        val release = result.release ?: return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_available_title, release.tag))
+            .setMessage(
+                getString(
+                    R.string.update_available_message,
+                    result.current,
+                    release.tag,
+                    release.notes.take(600).ifBlank { getString(R.string.update_no_notes) },
+                ),
+            )
+            .setPositiveButton(R.string.update_download) { _, _ -> downloadUpdate(release) }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun downloadUpdate(release: UpdateChecker.Release) {
+        if (!release.hasApk()) {
+            Toast.makeText(this, R.string.update_no_apk, Toast.LENGTH_LONG).show()
+            return
+        }
+        lifecycleScope.launch {
+            val file = withContext(Dispatchers.IO) {
+                ApkInstaller.download(this@LanLeaderboardActivity, release.apkUrl)
+            }
+            if (file == null) {
+                Toast.makeText(this@LanLeaderboardActivity, R.string.update_download_failed, Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            if (!ApkInstaller.canInstall(this@LanLeaderboardActivity)) {
+                Toast.makeText(this@LanLeaderboardActivity, R.string.update_need_permission, Toast.LENGTH_LONG).show()
+                ApkInstaller.requestInstallPermission(this@LanLeaderboardActivity)
+                return@launch
+            }
+            if (!ApkInstaller.install(this@LanLeaderboardActivity, file)) {
+                Toast.makeText(this@LanLeaderboardActivity, R.string.update_install_failed, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     // ---- QR ----------------------------------------------------------------

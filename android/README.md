@@ -109,3 +109,45 @@ adb install -r app-debug.apk
 - 摄像头 overlay 使用简单的归一化坐标映射；`PreviewView` 为 `FILL_CENTER`，在极端屏幕比例下可能需要按实际裁剪区域校正。
 - 模型文件使用 `../prototype/pose_landmarker_full.task`，约 9.4 MB；后续可换 lite 模型减小 APK。
 - Windows 下如果仓库路径包含中文，NDK/CMake 可能对路径敏感；如果构建失败，可在 ASCII 路径（如 `E:\campus-sport-build`）复制项目后构建。
+
+## Publishing a release (hot update)
+
+The app checks GitHub for a newer release and can install it in place. Two
+things make that work:
+
+1. **A stable signing key.** Android refuses an update whose signature differs
+   from the installed app, so every release must be signed with the same
+   keystore. Create it once:
+
+   ```bash
+   keytool -genkeypair -v -keystore android/release.jks -alias cadence \
+     -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   Then add these repository secrets (`Settings -> Secrets and variables -> Actions`):
+
+   | Secret | Value |
+   | --- | --- |
+   | `KEYSTORE_BASE64` | `base64 -w0 android/release.jks` |
+   | `KEYSTORE_PASSWORD` | the store password |
+   | `KEY_ALIAS` | `cadence` |
+   | `KEY_PASSWORD` | the key password |
+
+2. **A tag that matches `versionName`.** Bump `versionName` in
+   `app/build.gradle.kts`, commit, then:
+
+   ```bash
+   git tag v0.2.0
+   git push origin v0.2.0
+   ```
+
+   `.github/workflows/release.yml` builds `assembleRelease`, renames the output
+   to `cadence.apk` and publishes it with the tag. The in-app updater reads
+   `https://github.com/<repo>/releases/latest`, so the asset name matters.
+
+Phones on an older build then see 「检查更新」 offer the new version.
+
+The updater deliberately does not rely on the GitHub REST API: it is limited to
+60 anonymous requests per hour per IP and a shared campus address burns through
+that immediately. The primary path is the `/releases/latest` redirect, which
+costs no quota; the API is only a fallback for a differently named asset.

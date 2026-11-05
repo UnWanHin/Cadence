@@ -4,3 +4,7 @@ android/build/
 android/app/build/
 build-wasm/
 android/app/.cxx/
+android/keystore.properties
+android/release.jks
+*.jks
+*.keystore

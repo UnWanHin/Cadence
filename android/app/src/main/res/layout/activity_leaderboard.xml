@@ -141,6 +141,13 @@
             android:text="@string/room_discover" />
 
         <Button
+            android:id="@+id/checkUpdateButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/update_check" />
+
+        <Button
             android:id="@+id/shareAppButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

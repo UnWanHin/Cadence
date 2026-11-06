@@ -24,21 +24,27 @@ object ApkInstaller {
     fun downloadDir(context: Context): File = File(context.cacheDir, "update").apply { mkdirs() }
 
     /**
-     * Downloads [url] into the cache. [onProgress] receives 0..100, or -1 when
-     * the server sends no length.
+     * Downloads [url] into the cache.
+     *
+     * [onProgress] receives the bytes written and the announced total (0 when
+     * the server sent no length). [isCancelled] is polled between chunks so the
+     * caller can abort without waiting for the whole file.
+     *
+     * Returns null on any failure, including a cancelled or truncated download;
+     * a partial file is never left behind for the installer to open.
      */
-    fun download(context: Context, url: String, onProgress: (Int) -> Unit = {}): File? {
+    fun download(
+        context: Context,
+        url: String,
+        isCancelled: () -> Boolean = { false },
+        onProgress: (downloaded: Long, total: Long) -> Unit = { _, _ -> },
+    ): File? {
         val target = File(downloadDir(context), "cadence-update.apk")
         val partial = File(downloadDir(context), "cadence-update.apk.part")
 
         var connection: HttpURLConnection? = null
         return try {
-            connection = (URL(url).openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
-                connectTimeout = TIMEOUT_MS
-                readTimeout = TIMEOUT_MS
-                setRequestProperty("User-Agent", "Cadence-Android")
-            }
+            connection = openFollowingRedirects(url) ?: return null
             if (connection.responseCode != 200) return null
             val total = connection.contentLengthLong
 
@@ -48,9 +54,19 @@ object ApkInstaller {
                     var copied = 0L
                     var read: Int
                     while (input.read(buffer).also { read = it } > 0) {
+                        if (isCancelled()) {
+                            partial.delete()
+                            return null
+                        }
                         output.write(buffer, 0, read)
                         copied += read
-                        if (total > 0) onProgress(((copied * 100) / total).toInt())
+                        onProgress(copied, total)
+                    }
+                    // A short read means the connection dropped mid-file; an APK
+                    // cut in half installs as "解析软件包出现问题" with no clue why.
+                    if (total > 0 && copied != total) {
+                        partial.delete()
+                        return null
                     }
                 }
             }
@@ -58,7 +74,6 @@ object ApkInstaller {
                 partial.copyTo(target, overwrite = true)
                 partial.delete()
             }
-            onProgress(100)
             target
         } catch (error: Exception) {
             partial.delete()
@@ -68,23 +83,57 @@ object ApkInstaller {
         }
     }
 
+    /**
+     * Opens [url], following 3xx hops itself.
+     *
+     * The release download is a redirect to another host, and the redirect
+     * response reports a content length of zero. Following it by hand is what
+     * makes the real length available for a determinate progress bar.
+     */
+    private fun openFollowingRedirects(url: String, hops: Int = 5): HttpURLConnection? {
+        var current = url
+        var remaining = hops
+        while (remaining-- > 0) {
+            val connection = runCatching {
+                (URL(current).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = false
+                    connectTimeout = TIMEOUT_MS
+                    readTimeout = TIMEOUT_MS
+                    setRequestProperty("User-Agent", "Cadence-Android")
+                }
+            }.getOrNull() ?: return null
+
+            val code = runCatching { connection.responseCode }.getOrNull() ?: return null
+            val location = connection.getHeaderField("Location")
+            if (code in 300..399 && !location.isNullOrBlank()) {
+                connection.disconnect()
+                current = runCatching { URL(URL(current), location).toString() }.getOrNull() ?: return null
+                continue
+            }
+            return connection
+        }
+        return null
+    }
+
     /** True when this app may start an install at all. */
     fun canInstall(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
         return context.packageManager.canRequestPackageInstalls()
     }
 
-    /** Sends the user to the "install unknown apps" screen for this app. */
-    fun requestInstallPermission(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        runCatching {
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
-        }
+    /**
+     * Intent for the "install unknown apps" screen for this app, or null when
+     * the platform has no such switch.
+     *
+     * Returned rather than launched so the caller can start it through an
+     * ActivityResultLauncher and resume the download on the way back.
+     */
+    fun installPermissionIntent(context: Context): Intent? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return null
+        return Intent(
+            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+            Uri.parse("package:${context.packageName}"),
+        )
     }
 
     /**

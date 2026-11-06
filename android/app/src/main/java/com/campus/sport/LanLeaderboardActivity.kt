@@ -13,6 +13,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -35,6 +36,7 @@ import com.campus.sport.lan.ApkInstaller
 import com.campus.sport.lan.RoomScanner
 import com.campus.sport.lan.UpdateChecker
 import com.campus.sport.lan.UpdatePolicy
+import com.campus.sport.lan.UpdateProgress
 import com.campus.sport.lan.UpdateClient
 import com.campus.sport.lan.WorkoutEvent
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -55,6 +57,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * host too. Ranking is recomputed here from events, never taken precomputed.
  */
 class LanLeaderboardActivity : AppCompatActivity() {
+
+    /** Release waiting for the user to grant the install permission. */
+    private var pendingRelease: UpdateChecker.Release? = null
+
+    /**
+     * Comes back when the user leaves the "install unknown apps" screen; if the
+     * permission is now on, the download starts without another check.
+     */
+    private val installPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            val release = pendingRelease
+            pendingRelease = null
+            if (release == null) return@registerForActivityResult
+            if (ApkInstaller.canInstall(this)) {
+                Toast.makeText(this, R.string.update_permission_granted, Toast.LENGTH_SHORT).show()
+                downloadUpdate(release)
+            } else {
+                Toast.makeText(this, R.string.update_permission_denied, Toast.LENGTH_LONG).show()
+            }
+        }
 
     private lateinit var boardBox: LinearLayout
     private lateinit var chatBox: LinearLayout
@@ -516,24 +538,115 @@ class LanLeaderboardActivity : AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Entry point for both the manual and the automatic update offer.
+     *
+     * The install permission is requested *before* the download: asking after a
+     * 30 MB transfer would waste it, because the user has to leave for Settings
+     * and come back.
+     */
     private fun downloadUpdate(release: UpdateChecker.Release) {
         if (!release.hasApk()) {
             Toast.makeText(this, R.string.update_no_apk, Toast.LENGTH_LONG).show()
             return
         }
+        if (!ApkInstaller.canInstall(this)) {
+            pendingRelease = release
+            MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.update_permission_title)
+                .setMessage(R.string.update_permission_message)
+                .setPositiveButton(R.string.update_permission_go) { _, _ ->
+                    val intent = ApkInstaller.installPermissionIntent(this)
+                    if (intent == null) {
+                        // No such setting exists on this platform version.
+                        startDownload(release)
+                    } else {
+                        installPermissionLauncher.launch(intent)
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel) { _, _ -> pendingRelease = null }
+                .show()
+            return
+        }
+        startDownload(release)
+    }
+
+    /** Streams the APK behind a determinate progress dialog. */
+    private fun startDownload(release: UpdateChecker.Release) {
+        val view = layoutInflater.inflate(R.layout.dialog_update_progress, null)
+        val bar = view.findViewById<ProgressBar>(R.id.updateProgressBar)
+        val label = view.findViewById<TextView>(R.id.updateProgressText)
+        label.text = getString(R.string.update_preparing)
+
+        val cancelled = AtomicBoolean(false)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_downloading_title, release.tag))
+            .setView(view)
+            .setNegativeButton(android.R.string.cancel) { _, _ -> cancelled.set(true) }
+            .create()
+        dialog.show()
+
         lifecycleScope.launch {
+            // The callback fires per 64 KB chunk; only redraw when the
+            // percentage actually moves, so the dialog is not flooded.
+            var shownPercent = -2
             val file = withContext(Dispatchers.IO) {
-                ApkInstaller.download(this@LanLeaderboardActivity, release.apkUrl)
+                ApkInstaller.download(
+                    context = this@LanLeaderboardActivity,
+                    url = release.apkUrl,
+                    isCancelled = { cancelled.get() },
+                    onProgress = { done, total ->
+                        val percent = UpdateProgress.percent(done, total)
+                        if (percent != shownPercent) {
+                            shownPercent = percent
+                            runOnUiThread {
+                                if (percent >= 0) bar.progress = percent
+                                label.text = if (percent >= 0) {
+                                    getString(
+                                        R.string.update_downloading,
+                                        percent,
+                                        UpdateProgress.humanBytes(done),
+                                        UpdateProgress.humanBytes(total),
+                                    )
+                                } else {
+                                    getString(
+                                        R.string.update_downloading_unknown,
+                                        UpdateProgress.humanBytes(done),
+                                    )
+                                }
+                            }
+                        }
+                    },
+                )
             }
+            dialog.dismiss()
+            if (cancelled.get()) return@launch
+
             if (file == null) {
-                Toast.makeText(this@LanLeaderboardActivity, R.string.update_download_failed, Toast.LENGTH_LONG).show()
+                MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                    .setTitle(getString(R.string.update_available_title, release.tag))
+                    .setMessage(R.string.update_download_failed)
+                    .setPositiveButton(R.string.update_download_retry) { _, _ -> downloadUpdate(release) }
+                    .setNegativeButton(android.R.string.cancel, null)
+                    .show()
                 return@launch
             }
+
+            // The user can revoke the permission while the download runs.
             if (!ApkInstaller.canInstall(this@LanLeaderboardActivity)) {
-                Toast.makeText(this@LanLeaderboardActivity, R.string.update_need_permission, Toast.LENGTH_LONG).show()
-                ApkInstaller.requestInstallPermission(this@LanLeaderboardActivity)
+                pendingRelease = release
+                MaterialAlertDialogBuilder(this@LanLeaderboardActivity)
+                    .setTitle(R.string.update_permission_title)
+                    .setMessage(R.string.update_permission_message)
+                    .setPositiveButton(R.string.update_permission_go) { _, _ ->
+                        ApkInstaller.installPermissionIntent(this@LanLeaderboardActivity)
+                            ?.let { installPermissionLauncher.launch(it) }
+                    }
+                    .setNegativeButton(android.R.string.cancel) { _, _ -> pendingRelease = null }
+                    .show()
                 return@launch
             }
+
             if (!ApkInstaller.install(this@LanLeaderboardActivity, file)) {
                 Toast.makeText(this@LanLeaderboardActivity, R.string.update_install_failed, Toast.LENGTH_LONG).show()
             }

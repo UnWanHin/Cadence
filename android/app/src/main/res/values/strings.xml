@@ -148,6 +148,17 @@
     <string name="update_now">现在更新</string>
     <string name="update_later">稍后</string>
     <string name="update_auto_message">当前版本 %1$s，最新版本 %2$s\n\n%3$s</string>
+    <string name="update_permission_title">需要安装权限</string>
+    <string name="update_permission_message">本应用还没有获得「安装未知应用」的权限。\n\n先到设置里允许，回来后会直接开始下载，不用再点一次检查更新。</string>
+    <string name="update_permission_go">去设置</string>
+    <string name="update_permission_denied">还没有打开安装权限，更新已暂停</string>
+    <string name="update_permission_granted">权限已打开，开始下载</string>
+    <string name="update_downloading_title">正在下载 %1$s</string>
+    <string name="update_downloading">%1$d%% · %2$s / %3$s</string>
+    <string name="update_downloading_unknown">已下载 %1$s</string>
+    <string name="update_download_retry">重试</string>
+    <string name="update_preparing">正在准备下载…</string>
+    <string name="update_installing">下载完成，正在打开安装器…</string>
     <string name="compat_peer_newer">房间里有更新版本的设备（协议 %1$d），部分内容可能显示不全</string>
     <string name="compat_peer_older">房间里有旧版本的设备（协议 %1$d），已按兼容方式显示</string>
 </resources>

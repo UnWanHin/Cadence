@@ -1034,15 +1034,36 @@ $('kind').value = 'squat';
 resetMetrics();
 draw();
 refreshVideoLibrary();
+loadRoomInfo();
 
 // ---- 分享二维码 -----------------------------------------------------------
 // The APK lives on the same origin, so the QR only needs the absolute URL of
 // this page's server. Opened from disk (file://) there is no server to point
 // at, and the panel says so instead of encoding a useless path.
 let qrTarget = null;
+// What the room service says its reachable address is. A page opened on
+// 127.0.0.1 would otherwise encode a loopback address no phone can follow.
+let lanHint = null;
+
+const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+async function loadRoomInfo() {
+  try {
+    const response = await fetch(apiUrl('/info'), { cache: 'no-store' });
+    if (!response.ok) return;
+    const info = await response.json();
+    if (!info || !info.primary) return;
+    lanHint = { address: info.primary, port: info.port || location.port || '80' };
+  } catch {
+    // No /info on an older server: keep using the page's own origin.
+  }
+}
 
 function shareBase() {
   if (location.protocol === 'file:') return null;
+  if (LOOPBACK.has(location.hostname) && lanHint) {
+    return `http://${lanHint.address}:${lanHint.port}`;
+  }
   return location.origin;
 }
 
@@ -1059,14 +1080,18 @@ function showQr(kind) {
     return;
   }
 
-  const url = kind === 'apk' ? base + '/app.apk' : location.href;
+  const swapped = base !== location.origin;
+  const url = kind === 'apk' ? base + '/app.apk' : base + location.pathname + location.search;
   qrTarget = url;
   $('qrFrame').innerHTML = toSvg(url, { size: 220, margin: 4 });
   $('qrTitle').textContent = kind === 'apk' ? '安装包下载' : '房间地址';
   $('qrUrl').textContent = url;
-  $('qrNote').textContent = kind === 'apk'
+  const hint = swapped
+    ? '已自动换成局域网地址：你现在用的 127.0.0.1 手机访问不到。'
+    : '';
+  $('qrNote').textContent = (kind === 'apk'
     ? '手机扫码后浏览器会下载 cadence.apk，装好后可以选择加入房间。'
-    : '手机扫码直接打开这个房间，界面和电脑端连通。';
+    : '手机扫码直接打开这个房间，界面和电脑端连通。') + (hint ? '\n' + hint : '');
   $('qrCopy').disabled = false;
   panel.classList.add('on');
 }

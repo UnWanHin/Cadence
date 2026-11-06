@@ -482,6 +482,19 @@ async function handleApi(req, res, url) {
   if (apiPath === '/events') return handleEvents(req, res);
   if (apiPath === '/chat') return handleChat(req, res);
   if (apiPath === '/profile') return handleProfile(req, res);
+  if (apiPath === '/info' && method === 'GET') {
+    // The page needs a reachable address: a phone that scanned a QR holding
+    // 127.0.0.1 gets nothing. Same ranking idea as the Android side, so the
+    // first entry is the one worth showing.
+    const addresses = lanAddresses();
+    sendJson(res, 200, {
+      room: ROOM_NAME,
+      port: PORT,
+      addresses,
+      primary: addresses[0] || null,
+    });
+    return true;
+  }
   if (apiPath === '/health' && method === 'GET') {
     sendJson(res, 200, {
       ok: true,
@@ -597,14 +610,46 @@ async function handleChat(req, res) {
   sendJson(res, 201, chat); return true;
 }
 
+/**
+ * Non-loopback IPv4 addresses, best first.
+ *
+ * A phone that scans a QR holding the wrong address gets nothing, and a laptop
+ * usually has several: wifi, a docker bridge, and the tun device a proxy
+ * client creates. Ranking keeps the one a classmate can actually reach first.
+ */
 function lanAddresses() {
-  const addresses = [];
-  for (const list of Object.values(os.networkInterfaces())) {
+  const entries = [];
+  for (const [name, list] of Object.entries(os.networkInterfaces())) {
     for (const entry of list || []) {
-      if (entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address);
+      if (entry.family !== 'IPv4' && entry.family !== 4) continue;
+      if (entry.internal || !entry.address) continue;
+      entries.push({ name, address: entry.address, score: interfaceScore(name, entry.address) });
     }
   }
-  return addresses;
+  entries.sort((a, b) => a.score - b.score || a.name.localeCompare(b.name));
+  return [...new Set(entries.map((entry) => entry.address))];
+}
+
+/** Lower is better: wifi before ethernet, private ranges before anything else. */
+function interfaceScore(name, address) {
+  let score = 0;
+  if (/^(wl|wifi|ap)/i.test(name)) score += 0;
+  else if (/^(en|eth)/i.test(name)) score += 1;
+  else if (/^(rndis|usb)/i.test(name)) score += 2;
+  else score += 4;
+  if (/^(rmnet|ccmni|pdp)/i.test(name)) score += 6;
+  if (/^(tun|ppp|tailscale|docker|br-|veth|virbr|meta|clash|utun)/i.test(name)) score += 8;
+
+  if (address.startsWith('192.168.')) score += 0;
+  else if (address.startsWith('10.')) score += 1;
+  else if (/^172\.(1[6-9]|2\d|3[01])\./.test(address)) score += 2;
+  else score += 3;
+
+  // Link-local, and the benchmarking range fake-ip DNS hands out, are never
+  // reachable from another device.
+  if (address.startsWith('169.254.')) score += 900;
+  if (/^198\.(18|19)\./.test(address)) score += 900;
+  return score;
 }
 
 /** Streams the built APK so a desktop room can be shared by QR too. */

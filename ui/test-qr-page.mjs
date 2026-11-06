@@ -158,16 +158,33 @@ try {
   const panel = page.locator('#qrPanel');
   check(!(await panel.isVisible()), '分享面板一开始是收起的');
 
+  // The server reports a reachable address; opened on loopback the page must use
+  // it, or the QR encodes 127.0.0.1 and no phone can follow it.
+  const info = await page.evaluate(() => fetch('/api/v1/info').then((r) => r.json()).catch(() => null));
+
   await page.click('#qrApk');
   await panel.waitFor({ state: 'visible' });
   const apkUrl = (await page.textContent('#qrUrl')).trim();
   check(apkUrl.endsWith('/app.apk'), `安装包链接指向 /app.apk（${apkUrl}）`);
+  if (info && info.primary) {
+    check(
+      apkUrl.startsWith(`http://${info.primary}:${info.port}`),
+      `在 127.0.0.1 上打开时会换成本机局域网地址（${apkUrl}）`,
+    );
+    check(!apkUrl.includes('127.0.0.1'), '二维码里不含 127.0.0.1');
+  } else {
+    console.log('SKIP: 服务端没有报告局域网地址');
+  }
   check((await page.locator('#qrFrame svg').count()) === 1, '面板里渲染了一个 SVG 二维码');
   await page.locator('#qrFrame').screenshot({ path: path.join(shotDir, 'apk.png') });
 
   await page.click('#qrRoom');
   const roomUrl = (await page.textContent('#qrUrl')).trim();
-  check(roomUrl === BASE.replace(/\/$/, '/') || roomUrl.startsWith(BASE), `房间链接就是当前地址（${roomUrl}）`);
+  check(
+    roomUrl === BASE.replace(/\/$/, '/') || roomUrl.startsWith(BASE) ||
+      (info && info.primary && roomUrl === `http://${info.primary}:${info.port}/`),
+    `房间链接指向本房间（${roomUrl}）`,
+  );
   await page.locator('#qrFrame').screenshot({ path: path.join(shotDir, 'room.png') });
 
   const decoded = await runPython([path.join(shotDir, 'apk.png'), path.join(shotDir, 'room.png')]);

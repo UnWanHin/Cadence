@@ -768,12 +768,18 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private fun refreshBoard() {
         val range = rangeKeys.getOrElse(rangeSpinner.selectedItemPosition) { "week" }
         val rows: List<Leaderboard.Row> = Leaderboard.rank(allEvents(), range, System.currentTimeMillis())
-        // Renaming is display-only; show the current name for this device right
-        // away instead of waiting for the next event. Peers pick it up from the
-        // username carried by future events.
-        val me = LanRoom.profileId(this)
-        val myName = LanRoom.username(this)
-        rows.firstOrNull { it.profileId == me }?.username = myName
+        // Renaming is display-only. Chat already resolves the current name; the
+        // board has to use the same mapping or a person who renamed would show
+        // one name in chat and another in the ranking until they trained again.
+        val names = ChatNames.resolve(
+            remoteChat,
+            allEvents(),
+            LanRoom.profileId(this),
+            LanRoom.username(this),
+        )
+        rows.forEach { row ->
+            names[row.profileId]?.let { row.username = it }
+        }
         boardBox.removeAllViews()
         if (rows.isEmpty()) {
             boardBox.addView(label(getString(R.string.board_empty)))

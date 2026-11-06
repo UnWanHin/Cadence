@@ -49,6 +49,16 @@ The adapter owns model loading and landmark conversion. It must populate all 33 
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
 
+## 骨架开关与播放控制
+
+视频右上角有一枚「骨架 开/关」角标，工具条里也有同样的按钮，两处同步。
+
+暂停中拖动进度条会**立刻在新帧上重画一次骨架**；跳播、重播、视频结束都会重置 MediaPipe 的追踪状态并清空画布——
+否则追踪器会抱着旧的感兴趣区域，人动了骨架却钉在原地。帧循环另有看门狗：万一某帧抛异常导致
+`requestAnimationFrame` 链断掉，1.5 秒内会自动重启，不会留下一个冻住的骨架。
+
+`window.__cadenceDebug()` 里 `loopErrors / loopRestarts / trackerResets` 三个计数就是给这类问题用的。
+
 ## 判次按"相对深度"，不按固定角度
 
 `src/cadence/workout_session.cpp` 用本人站直时的读数当基线，只数"相对自己蹲下去 40°、再起来回到 20° 以内"的循环。

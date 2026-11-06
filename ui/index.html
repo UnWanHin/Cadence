@@ -34,6 +34,10 @@
   .video-wrap{position:relative;line-height:0}
   .pose-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
   .pose-overlay.mirror{transform:scaleX(-1)}
+  .pose-chip{position:absolute;top:8px;right:8px;line-height:1;padding:6px 10px;border-radius:999px;
+    border:1px solid rgba(255,255,255,.28);background:rgba(8,20,18,.62);color:#d8fff4;font-size:12px;
+    font-weight:700;cursor:pointer;backdrop-filter:blur(4px)}
+  .pose-chip[aria-pressed="false"]{color:#9bb;border-color:rgba(255,255,255,.16)}
   .file-meta{color:#52736c;font-size:13px;margin:6px 0 0;word-break:break-all}
   .video-progress{color:#52736c;font-size:13px;font-variant-numeric:tabular-nums;margin-top:4px}
   .library-title{font-size:14px;margin:16px 0 4px;color:#183d38}
@@ -85,6 +89,7 @@
       <div class="video-wrap">
         <video id="vid" muted playsinline></video>
         <canvas id="poseCanvas" class="pose-overlay"></canvas>
+        <button id="skeletonChip" class="pose-chip" type="button" aria-pressed="true">骨架 开</button>
       </div>
     </div>
     <output id="msg">准备开始</output>
@@ -797,6 +802,10 @@ window.__cadenceDebug = () => ({
   lastError: frameStats.lastError,
   coreRejects: frameStats.coreRejects,
   counted: frameStats.counted,
+  loopErrors: frameStats.loopErrors || 0,
+  loopRestarts: frameStats.loopRestarts || 0,
+  trackerResets: frameStats.trackerResets || 0,
+  trackerResetFailures: frameStats.trackerResetFailures || 0,
   angleMin: Number.isFinite(frameStats.angleMin) ? +frameStats.angleMin.toFixed(1) : null,
   angleMax: Number.isFinite(frameStats.angleMax) ? +frameStats.angleMax.toFixed(1) : null,
   inTargetFrames: frameStats.inTargetFrames,
@@ -807,6 +816,18 @@ window.__cadenceDebug = () => ({
   exercise: $('kind').value,
   mode: run ? run.mode : null,
 });
+
+// Watchdog: if the frame loop ever stops while a session is live, restart it.
+// Without this a single stall leaves a frozen skeleton and no recovery path
+// short of reloading the page.
+setInterval(() => {
+  if (!run || document.hidden) return;
+  if (performance.now() - lastFrameAt < 1500) return;
+  frameStats.loopRestarts = (frameStats.loopRestarts || 0) + 1;
+  cancelAnimationFrame(raf);
+  raf = 0;
+  tick();
+}, 600);
 
 const DEBUG = new URLSearchParams(location.search).has('debug');
 let lastDebugPrint = 0;
@@ -826,6 +847,41 @@ function resetSmoothing() {
   poseSmoother.reset();
 }
 
+// MediaPipe keeps temporal state. After a seek or a replay it can hold a stale
+// region of interest and keep returning the same landmarks while the person
+// moves — the skeleton looks stuck to the old pose. Switching running mode
+// through IMAGE drops that state.
+let trackerResetting = false;
+function resetTracker() {
+  resetSmoothing();
+  clearPose();
+  if (!model || typeof model.setOptions !== 'function') return;
+  trackerResetting = true;
+  Promise.resolve()
+    .then(() => model.setOptions({ runningMode: 'IMAGE' }))
+    .then(() => model.setOptions({ runningMode: 'VIDEO' }))
+    .then(() => { frameStats.trackerResets = (frameStats.trackerResets || 0) + 1; })
+    .catch(() => { frameStats.trackerResetFailures = (frameStats.trackerResetFailures || 0) + 1; })
+    .finally(() => {
+      trackerResetting = false;
+      stalledFrames = 0;
+    });
+}
+
+// A track that stops moving while the video does not is a stuck track, not a
+// still person.
+let stalledFrames = 0;
+function noteMotion(pose) {
+  const previous = poseSmoother.current;
+  if (!previous) return;
+  let total = 0;
+  for (let i = 0; i < pose.length; i += 1) {
+    total += Math.abs(pose[i].x - previous[i].x) + Math.abs(pose[i].y - previous[i].y);
+  }
+  stalledFrames = total / pose.length < 0.0004 ? stalledFrames + 1 : 0;
+  if (stalledFrames > 45) resetTracker();
+}
+
 // ---- 姿态骨架叠加 ----------------------------------------------------------
 // MediaPipe pose connections; the same 33-point layout the C++ core reads.
 const POSE_LINKS = [
@@ -838,6 +894,15 @@ const POSE_LINKS = [
 ];
 const MIN_VISIBILITY = 0.3;
 let showSkeleton = true;
+
+/** Single source of truth for the overlay state; both controls mirror it. */
+function setSkeleton(on) {
+  showSkeleton = on;
+  $('skeleton').textContent = on ? '显示骨架：开' : '显示骨架：关';
+  $('skeletonChip').textContent = on ? '骨架 开' : '骨架 关';
+  $('skeletonChip').setAttribute('aria-pressed', on ? 'true' : 'false');
+  if (!on) clearPose();
+}
 
 function poseContext() {
   const canvas = $('poseCanvas');
@@ -948,7 +1013,25 @@ function drawPose(landmarks, mode) {
   }
 }
 
+let lastFrameAt = 0;
+
 function tick() {
+  if (!run) return;
+  lastFrameAt = performance.now();
+  try {
+    tickFrame();
+  } catch (error) {
+    // One bad frame must never end the requestAnimationFrame chain: when it
+    // does, the loop dies silently and the skeleton stays frozen on screen
+    // while the video keeps playing, with nothing to explain why.
+    frameStats.loopErrors = (frameStats.loopErrors || 0) + 1;
+    frameStats.lastError = String((error && error.message) || error);
+    clearPose();
+    raf = requestAnimationFrame(tick);
+  }
+}
+
+function tickFrame() {
   if (!run) return;
   const now = performance.now();
   frameStats.frames += 1;
@@ -975,7 +1058,6 @@ function tick() {
     return;
   }
   if (r.paused) {
-    clearPose();
     $('msg').textContent = '已暂停';
     raf = requestAnimationFrame(tick);
     return;
@@ -993,6 +1075,10 @@ function tick() {
   } else {
     if (!$('vid').videoWidth || $('vid').readyState < 2) {
       detectionMessage = r.mode === 'video' ? '视频尚未就绪' : '摄像头尚未就绪';
+    } else if (trackerResetting) {
+      // Skip the frames while the landmarker switches running mode.
+      raf = requestAnimationFrame(tick);
+      return;
     } else if ($('vid').currentTime === r.lastVideoTime) {
       raf = requestAnimationFrame(tick);
       return;
@@ -1006,6 +1092,7 @@ function tick() {
           detectionMessage = '未检测到人体，请让全身入镜';
         } else {
           const chosen = poseSmoother.pick(found);
+          noteMotion(chosen.pose);
           landmarks = poseSmoother.smooth(chosen.pose);
           if (chosen.others > 0) {
             frameStats.multiPose = (frameStats.multiPose || 0) + 1;
@@ -1067,6 +1154,7 @@ function setPaused(paused) {
   if (paused && !run.paused) {
     run.paused = true;
     run.pausedAt = now;
+    clearPose();
     if (run.mode === 'video') $('vid').pause();
     $('pause').textContent = '继续';
   } else if (!paused && run.paused) {
@@ -1089,6 +1177,8 @@ function finish(auto, reason) {
   run = null;
   cancelAnimationFrame(raf);
   raf = 0;
+  resetSmoothing();
+  clearPose();
   if (r.mode === 'video') $('vid').pause();
   releaseCamera();
   lock(false);
@@ -1197,17 +1287,18 @@ $('videoFile').onchange = (event) => {
   start('video');
 };
 $('replay').onclick = () => {
-  if (!run && videoUrl) start('video');
+  if (!run && videoUrl) {
+    resetTracker();
+    start('video');
+  }
 };
 $('autoReplay').onclick = () => {
   autoReplay = !autoReplay;
   $('autoReplay').textContent = autoReplay ? '自动重播：开' : '自动重播：关';
 };
-$('skeleton').onclick = () => {
-  showSkeleton = !showSkeleton;
-  $('skeleton').textContent = showSkeleton ? '显示骨架：开' : '显示骨架：关';
-  if (!showSkeleton) clearPose();
-};
+for (const control of ['skeleton', 'skeletonChip']) {
+  $(control).onclick = () => setSkeleton(!showSkeleton);
+}
 $('mirror').onclick = () => {
   mirrored = !mirrored;
   applyMirror();
@@ -1228,7 +1319,36 @@ videoElement.addEventListener('loadedmetadata', () => {
 });
 videoElement.addEventListener('timeupdate', updateVideoClock);
 videoElement.addEventListener('durationchange', updateVideoClock);
-videoElement.addEventListener('seeked', updateVideoClock);
+videoElement.addEventListener('seeked', () => {
+  updateVideoClock();
+  // Seeking jumps the picture: drop tracker state and the smoothed skeleton so
+  // the overlay re-acquires the new frame instead of gliding from the old one.
+  if (run) run.lastVideoTime = -1;
+  resetTracker();
+  // While paused the frame loop draws nothing, so the new frame would sit there
+  // with a stale skeleton (or none). Detect that one frame right away.
+  if (run && run.paused) {
+    window.setTimeout(() => { detectCurrentFrame(); }, 140);
+  }
+});
+
+/** One detection on whatever the video shows now; used for seeking while paused. */
+async function detectCurrentFrame() {
+  if (!run || !model || trackerResetting) return;
+  const video = $('vid');
+  if (!video.videoWidth || video.readyState < 2) return;
+  try {
+    const found = model.detectForVideo(video, performance.now()).landmarks || [];
+    if (!found.length) { clearPose(); return; }
+    const chosen = poseSmoother.pick(found);
+    drawPose(poseSmoother.smooth(chosen.pose), run.mode);
+  } catch (error) {
+    frameStats.lastError = String((error && error.message) || error);
+  }
+}
+videoElement.addEventListener('playing', () => {
+  if (run) run.lastVideoTime = -1;
+});
 videoElement.addEventListener('ended', () => {
   if (!run || run.mode !== 'video') return;
   if (autoReplay) {
@@ -1242,6 +1362,7 @@ videoElement.addEventListener('ended', () => {
     run.pausedTotal = 0;
     run.lastVideoTime = -1;
     run.lastResult = null;
+    resetTracker();
     resetMetrics();
     $('msg').textContent = '自动重播，准备 3 秒…';
     const vid = $('vid');

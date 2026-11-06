@@ -73,7 +73,10 @@ EvaluationResult WorkoutSession::process(const PoseFrame& frame, float elapsed_s
       extension_baseline_ = std::max(angle, extension_baseline_ - kBaselineFallPerSecond * delta);
     }
     const float depth = extension_baseline_ - angle;
-    progress = std::clamp(depth / kEnterDepthDegrees, 0.0f, 1.0f);
+    const float enter_depth = exercise_ == ExerciseType::PushUp
+        ? kPushUpEnterDepthDegrees
+        : kEnterDepthDegrees;
+    progress = std::clamp(depth / enter_depth, 0.0f, 1.0f);
   } else {
     progress = progress_for(result, exercise_);
   }

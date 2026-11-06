@@ -52,12 +52,13 @@ std::string result_json(const cadence::EvaluationResult& result) {
   return output;
 }
 
-std::string summary_json(const cadence::SessionSummary& summary) {
-  char buffer[256];
+std::string summary_json(const cadence::SessionSummary& summary, float enter_depth) {
+  char buffer[320];
   std::snprintf(buffer, sizeof(buffer),
-                "{\"repetitions\":%d,\"points\":%d,\"calories\":%.4f,\"averageQuality\":%.4f,\"elapsedSeconds\":%.4f}",
+                "{\"repetitions\":%d,\"points\":%d,\"calories\":%.4f,\"averageQuality\":%.4f,"
+                "\"elapsedSeconds\":%.4f,\"enterDepth\":%.1f}",
                 summary.repetitions, summary.points, summary.calories,
-                summary.average_quality, summary.elapsed_seconds);
+                summary.average_quality, summary.elapsed_seconds, enter_depth);
   return buffer;
 }
 
@@ -110,7 +111,8 @@ const char* cadence_session_summary(void* session) {
     output = "{\"error\":\"session is null\"}";
     return output.c_str();
   }
-  output = summary_json(static_cast<cadence::WorkoutSession*>(session)->summary());
+  const auto* workout = static_cast<const cadence::WorkoutSession*>(session);
+  output = summary_json(workout->summary(), workout->enter_depth_degrees());
   return output.c_str();
 }
 

@@ -81,17 +81,29 @@ check(plankSummary.averageQuality > 0.9, '一条直线的平板质量高');
 check(plankSummary.repetitions === 0, '保持类动作不产生次数');
 
 // ---- a clip that never performs the movement must not report quality ----
-const shallow = new CadenceWasmBridge(module, 'pushup');
-let shallowTime = 0;
+const still = new CadenceWasmBridge(module, 'pushup');
+let stillTime = 0;
 for (let frame = 0; frame < 120; frame += 1) {
-  shallow.process(pushup(frame % 2 ? 15 : 0), shallowTime);
-  shallowTime += 1 / 24;
+  still.process(pushup(frame % 2 ? 4 : 0), stillTime);   // tracker jitter only
+  stillTime += 1 / 24;
 }
-const shallowSummary = shallow.summary();
-check(shallowSummary.repetitions === 0, '手臂几乎不动时不记次数');
-check(shallowSummary.averageQuality === 0,
-      `没做动作时不报质量分（当前 ${shallowSummary.averageQuality}）`);
-check(shallowSummary.points === 0, '没做动作时不给分');
+const stillSummary = still.summary();
+check(stillSummary.repetitions === 0, '手臂完全不动时不记次数');
+check(stillSummary.averageQuality === 0,
+      `没做动作时不报质量分（当前 ${stillSummary.averageQuality}）`);
+check(stillSummary.points === 0, '没做动作时不给分');
+
+// ---- just short of the bar: recognised as movement, still no rep ----
+const almost = new CadenceWasmBridge(module, 'pushup');
+let almostTime = 0;
+for (let frame = 0; frame < 120; frame += 1) {
+  almost.process(pushup(frame % 24 < 12 ? 0 : 15), almostTime);
+  almostTime += 1 / 24;
+}
+const almostSummary = almost.summary();
+check(almostSummary.repetitions === 0, '差一点的起伏不记次数');
+check(almostSummary.enterDepth === 16,
+      `核心把俯卧撑的门槛定为 ${almostSummary.enterDepth}°`);
 
 // ---- and a real push-up still counts ----
 const deep = new CadenceWasmBridge(module, 'pushup');

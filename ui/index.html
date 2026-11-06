@@ -1254,8 +1254,14 @@ function finish(auto, reason) {
       ? '没有识别到支撑姿势：让肩、髋、踝（膝盖被挡住也可以）同时出现在画面里。'
       : '没有识别到身体：请让肩、肘、腕、髋、膝同时入镜。';
   } else if (ex.type === 'reps' && reps === 0) {
-    hint = `没有检测到完整动作：${ex.mainLabel}只变化了 ${amplitude}°，`
-      + `一次动作需要至少 40° 的起伏。`;
+    // The core owns the threshold (push-ups need less than squats), so quote it
+    // instead of assuming 40 everywhere.
+    const needed = Math.round(summary.enterDepth || 40);
+    // Two different zeros: too little travel, or travel that never completes a
+    // descent and return. Saying "26° but it needs 16°" would read as a bug.
+    hint = amplitude < needed
+      ? `没有检测到完整动作：${ex.mainLabel}只变化了 ${amplitude}°，一次动作需要至少 ${needed}° 的起伏。`
+      : `画面里有起伏，但没有完整的一次下沉到回位：让${ex.mainLabel}完整弯曲再伸直，中间不要停。`;
   } else if (ex.type === 'hold' && active < 1000) {
     hint = '支撑时间太短，保持 1 秒以上才会记分。';
   }

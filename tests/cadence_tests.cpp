@@ -6,6 +6,12 @@
 #include "cadence/pose_backend.h"
 #include "cadence/repetition_counter.h"
 #include "cadence/workout_session.h"
+#include <fstream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include <cmath>
 
 #include <cmath>
 #include <iostream>
@@ -274,6 +280,123 @@ void test_quality_is_not_inflated_without_movement() {
   expect(summary.average_quality == 0.0f,
          "a clip with no movement must not report a quality score");
 }
+
+// Field report: a professional side-on push-up clip was measured at 15-25
+// degrees of elbow flexion per rep, well under the 40 degree knee bar, so it
+// counted nothing. The push-up bar is 16 degrees; noise still must not count.
+cadence::PoseFrame pushup_frame(float elbow_angle) {
+  cadence::PoseFrame frame;
+  for (auto& landmark : frame.landmarks) landmark.visibility = 1.0f;
+  const float radians = elbow_angle * 3.14159265f / 180.0f;
+  // left arm: shoulder -> elbow -> wrist, the asked-for angle between them
+  frame.landmarks[11] = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.landmarks[13] = {1.0f, 0.0f, 0.0f, 1.0f};
+  frame.landmarks[15] = {1.0f - std::cos(radians), std::sin(radians), 0.0f, 1.0f};
+  frame.landmarks[12] = {0.0f, 0.3f, 0.0f, 1.0f};
+  frame.landmarks[14] = {1.0f, 0.3f, 0.0f, 1.0f};
+  frame.landmarks[16] = {2.0f, 0.3f, 0.0f, 1.0f};
+  frame.landmarks[23] = {0.0f, 0.6f, 0.0f, 1.0f};
+  frame.landmarks[25] = {1.0f, 0.6f, 0.0f, 1.0f};
+  frame.landmarks[27] = {2.0f, 0.6f, 0.0f, 1.0f};
+  return frame;
+}
+
+/** Cycles of `depth` degrees starting from a straight elbow, at 24 fps. */
+int count_pushup_cycles(float depth, int cycles) {
+  cadence::WorkoutSession session(cadence::ExerciseType::PushUp);
+  float time = 0.0f;
+  const float frame_step = 1.0f / 24.0f;
+  for (int cycle = 0; cycle < cycles; ++cycle) {
+    for (int down = 0; down < 24; ++down) {
+      session.process(pushup_frame(175.0f - depth * down / 24.0f), time);
+      time += frame_step;
+    }
+    for (int up = 0; up < 24; ++up) {
+      session.process(pushup_frame(175.0f - depth + depth * up / 24.0f), time);
+      time += frame_step;
+    }
+  }
+  return session.summary().repetitions;
+}
+
+// Real measurements, not guesses: these two series are the elbow angles the
+// core produced for actual clips (see tests/fixtures). Feeding them back means
+// the thresholds are pinned to what a camera really sees.
+std::vector<float> load_angle_series(const char* name) {
+  const std::string path = std::string(CADENCE_FIXTURE_DIR) + "/" + name;
+  std::ifstream file(path);
+  if (!file) throw std::runtime_error("cannot open fixture " + path);
+  std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+  std::vector<float> angles;
+  const auto start = text.find('[', text.find("angles"));
+  for (const char* cursor = text.c_str() + start; *cursor; ++cursor) {
+    if (*cursor >= '0' && (*cursor <= '9' || *cursor == '.' || *cursor == '-')) {
+      char* end = nullptr;
+      const float value = std::strtof(cursor, &end);
+      angles.push_back(value);
+      cursor = end - 1;
+    } else if (*cursor == ']') {
+      break;
+    }
+  }
+  return angles;
+}
+
+int count_reps_in_series(const std::vector<float>& angles, cadence::ExerciseType type,
+                         float fps = 29.8f) {
+  cadence::WorkoutSession session(type);
+  float time = 0.0f;
+  for (const float angle : angles) {
+    cadence::PoseFrame frame;
+    for (auto& landmark : frame.landmarks) landmark.visibility = 1.0f;
+    const float radians = angle * 3.14159265f / 180.0f;
+    frame.landmarks[11] = {0.0f, 0.0f, 0.0f, 1.0f};
+    frame.landmarks[13] = {1.0f, 0.0f, 0.0f, 1.0f};
+    frame.landmarks[15] = {1.0f - std::cos(radians), std::sin(radians), 0.0f, 1.0f};
+    // the right arm stays straight, so the core's minimum() sees the left one
+    frame.landmarks[12] = {0.0f, 0.3f, 0.0f, 1.0f};
+    frame.landmarks[14] = {1.0f, 0.3f, 0.0f, 1.0f};
+    frame.landmarks[16] = {2.0f, 0.3f, 0.0f, 1.0f};
+    frame.landmarks[23] = {0.0f, 0.6f, 0.0f, 1.0f};
+    frame.landmarks[25] = {1.0f, 0.6f, 0.0f, 1.0f};
+    frame.landmarks[27] = {2.0f, 0.6f, 0.0f, 1.0f};
+    session.process(frame, time);
+    time += 1.0f / fps;
+  }
+  return session.summary().repetitions;
+}
+
+void test_a_professional_pushup_counts() {
+  const auto pushup = load_angle_series("pushup-elbow.json");
+  expect(!pushup.empty(), "the push-up fixture loaded");
+  expect(count_reps_in_series(pushup, cadence::ExerciseType::PushUp) == 3,
+         "a real side-on push-up clip must count three reps");
+}
+
+void test_pushup_noise_is_not_a_rep() {
+  // Same core, same fps, but a clip where the arms never move: a forearm plank.
+  const auto plank = load_angle_series("plank-elbow.json");
+  expect(!plank.empty(), "the plank fixture loaded");
+  const int spurious = count_reps_in_series(plank, cadence::ExerciseType::PushUp);
+  expect(spurious <= 1, "arm jitter must not turn into a pile of reps");
+}
+
+void test_squat_still_needs_a_real_dip() {
+  // The push-up bar is looser; the knee bar must not move with it.
+  cadence::WorkoutSession session(cadence::ExerciseType::Squat);
+  float time = 0.0f;
+  for (int cycle = 0; cycle < 2; ++cycle) {
+    for (int down = 0; down < 24; ++down) {
+      session.process(frame_at_knee_angle(170.0f - 25.0f * down / 24.0f), time);
+      time += 1.0f / 24.0f;
+    }
+    for (int up = 0; up < 24; ++up) {
+      session.process(frame_at_knee_angle(145.0f + 25.0f * up / 24.0f), time);
+      time += 1.0f / 24.0f;
+    }
+  }
+  expect(session.summary().repetitions == 0, "a 25 degree knee dip is still not a squat");
+}
 }
 
 int main() {
@@ -295,6 +418,9 @@ int main() {
     test_plank_survives_a_hidden_knee();
     test_plank_session_accumulates_time_and_points();
     test_quality_is_not_inflated_without_movement();
+    test_a_professional_pushup_counts();
+    test_pushup_noise_is_not_a_rep();
+    test_squat_still_needs_a_real_dip();
     std::cout << "cadence_tests: all tests passed\n";
     return 0;
   } catch (const std::exception& error) {

@@ -29,6 +29,10 @@ target_link_libraries(cadence_demo PRIVATE cadence_core)
 enable_testing()
 add_executable(cadence_tests ../tests/cadence_tests.cpp)
 target_link_libraries(cadence_tests PRIVATE cadence_core)
+# The tests replay recorded angle series from real clips, so they need to find
+# tests/fixtures no matter where the build tree lives.
+target_compile_definitions(cadence_tests PRIVATE
+  CADENCE_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../tests/fixtures")
 target_compile_options(cadence_tests PRIVATE -Wall -Wextra -Wpedantic)
 add_test(NAME cadence_tests COMMAND cadence_tests)
 

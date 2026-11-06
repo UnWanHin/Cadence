@@ -16,6 +16,11 @@ class WorkoutSession {
   SessionSummary summary() const;
   void reset();
 
+  /** The dip this exercise needs, in degrees — the page prints it in hints. */
+  float enter_depth_degrees() const {
+    return exercise_ == ExerciseType::PushUp ? kPushUpEnterDepthDegrees : kEnterDepthDegrees;
+  }
+
  private:
   // A rep is measured against this lifter's own standing angle rather than a
   // fixed knee angle: two pose models disagree by more than ten degrees on the
@@ -25,6 +30,10 @@ class WorkoutSession {
   static constexpr float kBaselineFallPerSecond = 10.0f;
   static constexpr float kMinimumDipPerFrame = 0.5f;
   static constexpr float kEnterDepthDegrees = 40.0f;
+  // A push-up is measured at the elbow, and a side-on push-up hides most of
+  // that flexion: a professional clip read only 15-25 degrees per rep where a
+  // knee read 100. The bar has to sit where the joint is actually measured.
+  static constexpr float kPushUpEnterDepthDegrees = 16.0f;
 
   float extension_baseline_{0.0f};
   bool extension_baseline_ready_{false};

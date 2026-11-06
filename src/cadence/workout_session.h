@@ -17,6 +17,19 @@ class WorkoutSession {
   void reset();
 
  private:
+  // A rep is measured against this lifter's own standing angle rather than a
+  // fixed knee angle: two pose models disagree by more than ten degrees on the
+  // same clip, and a fixed threshold then either never closes a rep or closes
+  // one on a bob. The baseline follows the highest angle seen recently.
+  static constexpr float kBaselineRisePerSecond = 120.0f;
+  static constexpr float kBaselineFallPerSecond = 10.0f;
+  static constexpr float kMinimumDipPerFrame = 0.5f;
+  static constexpr float kEnterDepthDegrees = 40.0f;
+
+  float extension_baseline_{0.0f};
+  bool extension_baseline_ready_{false};
+  float last_elapsed_seconds_{-1.0f};
+
   ExerciseType exercise_;
   ExerciseEvaluator evaluator_;
   RepetitionCounter counter_;

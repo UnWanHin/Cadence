@@ -156,6 +156,7 @@
 import { rankEvents, eventFromRecord, createProfile, randomId } from './leaderboard.js';
 import { createChatStore, withDisplayNames } from './chat.js';
 import { toSvg } from './qr.js';
+import { createPoseSmoother } from './pose-smoothing.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
 const STORE = 'campus-model-v1';
@@ -626,6 +627,13 @@ async function ensureModel() {
       model: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
     },
   ];
+  // ?model=cdn forces the CDN copy, ?model=local forces the local one. Useful
+  // when a video that used to count suddenly stops: the two models disagree by
+  // a few degrees, which is enough to change a borderline decision.
+  const forced = new URLSearchParams(location.search).get('model');
+  if (forced === 'cdn') sources.splice(0, 1);
+  else if (forced === 'local') sources.splice(1, 1);
+
   let lastError = null;
   for (const source of sources) {
     try {
@@ -677,6 +685,7 @@ async function start(mode) {
     } else {
       detachVideoElement();
     }
+    resetSmoothing();
     run = {
       mode,
       exercise: exerciseCode,
@@ -757,6 +766,64 @@ function demoLandmarks(code, elapsed) {
     put(16, 0.5 + d / 2, 0.5);
   }
   return lm;
+}
+
+// ---- 诊断出口 --------------------------------------------------------------
+// "没有次数" has four very different causes: nothing detected, two people
+// detected, an exception per frame, or the C++ core rejecting every frame.
+// From the outside they look identical, so the loop counts them and
+// ?debug=1 prints the numbers once a second.
+const frameStats = {
+  frames: 0,
+  poses: {},
+  errors: 0,
+  lastError: '',
+  coreRejects: 0,
+  counted: 0,
+  series: [],
+  angleMin: Infinity,
+  angleMax: -Infinity,
+  inTargetFrames: 0,
+};
+
+function notePoses(found) {
+  frameStats.poses[found] = (frameStats.poses[found] || 0) + 1;
+}
+
+window.__cadenceDebug = () => ({
+  frames: frameStats.frames,
+  poses: { ...frameStats.poses },
+  errors: frameStats.errors,
+  lastError: frameStats.lastError,
+  coreRejects: frameStats.coreRejects,
+  counted: frameStats.counted,
+  angleMin: Number.isFinite(frameStats.angleMin) ? +frameStats.angleMin.toFixed(1) : null,
+  angleMax: Number.isFinite(frameStats.angleMax) ? +frameStats.angleMax.toFixed(1) : null,
+  inTargetFrames: frameStats.inTargetFrames,
+  series: frameStats.series,
+  message: $('msg').textContent,
+  feedback: $('feedback').textContent,
+  reps: $('mReps').textContent,
+  exercise: $('kind').value,
+  mode: run ? run.mode : null,
+});
+
+const DEBUG = new URLSearchParams(location.search).has('debug');
+let lastDebugPrint = 0;
+function printDebug(now) {
+  if (!DEBUG || now - lastDebugPrint < 1000) return;
+  lastDebugPrint = now;
+  console.debug('[cadence]', JSON.stringify(window.__cadenceDebug()));
+}
+
+// ---- 多人与平滑 ------------------------------------------------------------
+// Both behaviours live in pose-smoothing.js so they can be tested without a
+// browser: jitter smoothing, and choosing the tracked body instead of throwing
+// the frame away when the model happens to find two people.
+const poseSmoother = createPoseSmoother();
+
+function resetSmoothing() {
+  poseSmoother.reset();
 }
 
 // ---- 姿态骨架叠加 ----------------------------------------------------------
@@ -884,6 +951,8 @@ function drawPose(landmarks, mode) {
 function tick() {
   if (!run) return;
   const now = performance.now();
+  frameStats.frames += 1;
+  printDebug(now);
   const r = run;
   const ex = EXERCISES[r.exercise];
 
@@ -931,10 +1000,21 @@ function tick() {
       r.lastVideoTime = $('vid').currentTime;
       try {
         const found = model.detectForVideo($('vid'), now).landmarks || [];
-        if (found.length === 1) landmarks = found[0];
-        else if (found.length === 0) detectionMessage = '未检测到人体，请让全身入镜';
-        else detectionMessage = '需要单人入镜';
-      } catch (_) {
+        notePoses(found.length);
+        if (found.length === 0) {
+          resetSmoothing();
+          detectionMessage = '未检测到人体，请让全身入镜';
+        } else {
+          const chosen = poseSmoother.pick(found);
+          landmarks = poseSmoother.smooth(chosen.pose);
+          if (chosen.others > 0) {
+            frameStats.multiPose = (frameStats.multiPose || 0) + 1;
+            $('msg').textContent = `画面里有 ${chosen.others + 1} 个人，正在跟踪主体`;
+          }
+        }
+      } catch (error) {
+        frameStats.errors += 1;
+        frameStats.lastError = String((error && error.message) || error);
         detectionMessage = '无法判断，请调整机位';
       }
     }
@@ -944,10 +1024,17 @@ function tick() {
     drawPose(landmarks, r.mode);
     const result = r.session.process(landmarks, activeMs(now) / 1000);
     if (!result) {
+      frameStats.coreRejects += 1;
       $('msg').textContent = 'C++ 模型未返回结果';
       $('feedback').textContent = '请调整机位后重试；演示模式可验证模型逻辑。';
     } else {
       r.lastResult = result;
+      if (Number.isFinite(result.mainValue)) {
+        frameStats.angleMin = Math.min(frameStats.angleMin, result.mainValue);
+        frameStats.angleMax = Math.max(frameStats.angleMax, result.mainValue);
+        if (DEBUG) frameStats.series.push(+result.mainValue.toFixed(1));
+      }
+      if (result.inTarget) frameStats.inTargetFrames += 1;
       if (!result.poseDetected) {
         $('msg').textContent = '无法判断：请让肩、髋、膝、踝同时入镜';
       } else if (ex.type === 'hold') {

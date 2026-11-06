@@ -49,6 +49,18 @@ The adapter owns model loading and landmark conversion. It must populate all 33 
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
 
+## 判次按"相对深度"，不按固定角度
+
+`src/cadence/workout_session.cpp` 用本人站直时的读数当基线，只数"相对自己蹲下去 40°、再起来回到 20° 以内"的循环。
+换姿态模型时不会因为几度差异把判次改掉。
+
+```bash
+bash tools/run-core-tests.sh    # 本机 C++ 测试（含判次阈值性质测试）
+bash tools/build-wasm.sh        # 改了核心后重建 ui/wasm/（需要 emscripten）
+```
+
+骨架平滑和"画面里两个人时跟踪谁"在 `ui/pose-smoothing.js`，`node ui/test-smoothing.mjs` 可以单独验证。
+
 ## 姿态骨架叠加
 
 主页面在视频上方叠了一层 canvas，把 MediaPipe 的 33 个关键点画成骨架，右上角「显示骨架」可以关掉。

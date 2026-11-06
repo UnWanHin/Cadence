@@ -49,6 +49,15 @@ The adapter owns model loading and landmark conversion. It must populate all 33 
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
 
+## 姿态骨架叠加
+
+主页面在视频上方叠了一层 canvas，把 MediaPipe 的 33 个关键点画成骨架，右上角「显示骨架」可以关掉。
+两个细节：`object-fit: contain` 会留黑边，所以骨架按视频实际显示区域换算，不是直接拉伸；镜像画面时 canvas 一起翻转，
+否则骨架会跑到人的反方向。
+
+姿态模型**优先读本机** `/prototype/` 下的 bundle、wasm 和 `pose_landmarker_full.task`，取不到才退回 CDN——
+教室没有外网时照样能判定动作。原型的独立页面在同一服务下也能直接打开：`/prototype/pose-prototype.html`。
+
 ## 网页上的分享二维码
 
 页面底部「分享到手机」有两个按钮：房间二维码（手机扫了直接进同一个房间）和安装包二维码（扫了直接下载 `cadence.apk`）。

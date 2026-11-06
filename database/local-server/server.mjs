@@ -27,6 +27,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..', '..');
 const UI_ROOT = path.join(PROJECT_ROOT, 'ui');
+// The pose prototype is self-contained (its own wasm, model and bundle) and the
+// room page now borrows that bundle, so it has to be reachable over HTTP.
+const PROTOTYPE_ROOT = path.join(PROJECT_ROOT, 'prototype');
 const DATA_ROOT = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.join(__dirname, 'data');
@@ -554,6 +557,35 @@ async function handleProfile(req, res) {
   sendJson(res, 200, { profileId, username, updated: updated > 0 }); return true;
 }
 
+/**
+ * Serves a file under [root], refusing anything that escapes it.
+ * Returns true when it produced a response.
+ */
+async function sendFileUnder(res, root, relative) {
+  let filePath = path.resolve(root, relative);
+  if (filePath !== root && !filePath.startsWith(`${root}${path.sep}`)) {
+    sendError(res, 403, 'FORBIDDEN', '路径不允许');
+    return true;
+  }
+  let stat;
+  try {
+    stat = await fsp.stat(filePath);
+    if (stat.isDirectory()) filePath = path.join(filePath, 'index.html');
+    stat = await fsp.stat(filePath);
+  } catch {
+    return false;
+  }
+  const extension = path.extname(filePath).toLowerCase();
+  res.writeHead(200, {
+    'Content-Type': MIME_BY_EXTENSION[extension] || 'application/octet-stream',
+    'Content-Length': stat.size,
+    // The model and wasm are large and never change; the page must not cache.
+    'Cache-Control': extension === '.html' ? 'no-cache' : 'public, max-age=300',
+  });
+  fs.createReadStream(filePath).pipe(res);
+  return true;
+}
+
 async function serveStatic(req, res, url) {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendError(res, 405, 'METHOD_NOT_ALLOWED', '只支持 GET/HEAD');
@@ -698,6 +730,10 @@ const server = http.createServer(async (req, res) => {
       const handled = await handleApi(req, res, url);
       if (!handled) sendError(res, 404, 'NOT_FOUND', '接口不存在');
       return;
+    }
+    if (url.pathname.startsWith('/prototype/')) {
+      const relative = url.pathname.slice('/prototype/'.length);
+      if (await sendFileUnder(res, PROTOTYPE_ROOT, relative)) return;
     }
     await serveStatic(req, res, url);
   } catch (error) {

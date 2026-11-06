@@ -31,6 +31,9 @@
   .row>div{flex:1 1 300px;min-width:280px}
   .video-tools{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
   .video-tools input[type=file]{display:none}
+  .video-wrap{position:relative;line-height:0}
+  .pose-overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .pose-overlay.mirror{transform:scaleX(-1)}
   .file-meta{color:#52736c;font-size:13px;margin:6px 0 0;word-break:break-all}
   .video-progress{color:#52736c;font-size:13px;font-variant-numeric:tabular-nums;margin-top:4px}
   .library-title{font-size:14px;margin:16px 0 4px;color:#183d38}
@@ -79,8 +82,9 @@
         <input id="videoFile" type="file" accept="video/*" hidden>
         <p id="videoInfo" class="file-meta">未选择视频。支持浏览器可解码的 mp4/webm/mov，分析只在本机进行。</p>
       </div>
-      <div>
+      <div class="video-wrap">
         <video id="vid" muted playsinline></video>
+        <canvas id="poseCanvas" class="pose-overlay"></canvas>
       </div>
     </div>
     <output id="msg">准备开始</output>
@@ -102,6 +106,7 @@
       <button id="replay" class="secondary" disabled>重播视频</button>
       <button id="autoReplay" class="secondary">自动重播：关</button>
       <button id="mirror" class="secondary">镜像画面：关</button>
+      <button id="skeleton" class="secondary">显示骨架：开</button>
     </div>
     <div id="videoTime" class="video-progress">0:00 / 0:00</div>
     <h3 class="library-title">局域网视频库</h3>
@@ -607,18 +612,39 @@ function resetMetrics() {
 
 async function ensureModel() {
   if (model) return;
-  const base = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-  const { FilesetResolver, PoseLandmarker } = await import(base + '/vision_bundle.mjs');
-  model = await PoseLandmarker.createFromOptions(
-    await FilesetResolver.forVisionTasks(base + '/wasm'),
+  // Local first: the room service serves the same bundle, wasm and model that
+  // the prototype uses, so a classroom without internet still gets detection.
+  const sources = [
     {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-      },
-      runningMode: 'VIDEO',
-      numPoses: 2,
+      bundle: '/prototype/vision_bundle.mjs',
+      wasm: '/prototype/wasm',
+      model: '/prototype/pose_landmarker_full.task',
     },
-  );
+    {
+      bundle: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs',
+      wasm: 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm',
+      model: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+    },
+  ];
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const { FilesetResolver, PoseLandmarker } = await import(source.bundle);
+      model = await PoseLandmarker.createFromOptions(
+        await FilesetResolver.forVisionTasks(source.wasm),
+        {
+          baseOptions: { modelAssetPath: source.model },
+          runningMode: 'VIDEO',
+          numPoses: 2,
+        },
+      );
+      return;
+    } catch (error) {
+      model = null;
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('无法加载姿态模型');
 }
 
 async function start(mode) {
@@ -733,6 +759,128 @@ function demoLandmarks(code, elapsed) {
   return lm;
 }
 
+// ---- 姿态骨架叠加 ----------------------------------------------------------
+// MediaPipe pose connections; the same 33-point layout the C++ core reads.
+const POSE_LINKS = [
+  [0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8], [9, 10],
+  [11, 12], [11, 13], [13, 15], [15, 17], [15, 19], [15, 21], [17, 19],
+  [12, 14], [14, 16], [16, 18], [16, 20], [16, 22], [18, 20],
+  [11, 23], [12, 24], [23, 24],
+  [23, 25], [25, 27], [27, 29], [27, 31], [29, 31],
+  [24, 26], [26, 28], [28, 30], [28, 32], [30, 32],
+];
+const MIN_VISIBILITY = 0.3;
+let showSkeleton = true;
+
+function poseContext() {
+  const canvas = $('poseCanvas');
+  if (!canvas) return null;
+  const video = $('vid');
+  const box = video.getBoundingClientRect();
+  const ratio = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(box.width * ratio));
+  const height = Math.max(1, Math.round(box.height * ratio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  return { canvas, ctx: canvas.getContext('2d'), width, height, ratio };
+}
+
+function clearPose() {
+  const surface = poseContext();
+  if (surface && surface.ctx) surface.ctx.clearRect(0, 0, surface.width, surface.height);
+}
+
+/**
+ * Draws [landmarks] over the video. Camera and video frames are normalised to
+ * the picture, which `object-fit: contain` letterboxes, so the usable box is
+ * computed rather than assumed. Demo landmarks are not normalised at all, so
+ * they are fitted to their own bounding box instead.
+ */
+function drawPose(landmarks, mode) {
+  const surface = poseContext();
+  if (!surface || !surface.ctx) return;
+  const { ctx, width, height, ratio } = surface;
+  ctx.clearRect(0, 0, width, height);
+  if (!showSkeleton || !landmarks || !landmarks.length) return;
+
+  const video = $('vid');
+  const intrinsic = mode !== 'demo' && video.videoWidth > 0 && video.videoHeight > 0;
+  let scaleX = width;
+  let scaleY = height;
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (intrinsic) {
+    const scale = Math.min(width / video.videoWidth, height / video.videoHeight);
+    scaleX = video.videoWidth * scale;
+    scaleY = video.videoHeight * scale;
+    offsetX = (width - scaleX) / 2;
+    offsetY = (height - scaleY) / 2;
+  } else {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const point of landmarks) {
+      if (!point) continue;
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY)) return;
+    const spanX = Math.max(1e-6, maxX - minX);
+    const spanY = Math.max(1e-6, maxY - minY);
+    const scale = Math.min((width * 0.8) / spanX, (height * 0.8) / spanY);
+    scaleX = scale;
+    scaleY = scale;
+    offsetX = (width - spanX * scale) / 2 - minX * scale;
+    offsetY = (height - spanY * scale) / 2 - minY * scale;
+  }
+
+  const visible = (index) => {
+    const point = landmarks[index];
+    return point && (point.visibility === undefined || point.visibility > MIN_VISIBILITY);
+  };
+  const screen = (index) => {
+    const point = landmarks[index];
+    return { x: offsetX + point.x * scaleX, y: offsetY + point.y * scaleY };
+  };
+
+  // Two passes: a dark outline keeps the lines readable on a light wall, a
+  // bright stroke keeps them readable on a dark one.
+  const passes = [
+    { colour: 'rgba(4, 26, 22, .55)', width: 7 * ratio, joint: 5.5 * ratio },
+    { colour: '#5ef0c0', width: 3 * ratio, joint: 3.2 * ratio },
+  ];
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const pass of passes) {
+    ctx.strokeStyle = pass.colour;
+    ctx.lineWidth = pass.width;
+    ctx.beginPath();
+    for (const [from, to] of POSE_LINKS) {
+      if (!visible(from) || !visible(to)) continue;
+      const a = screen(from);
+      const b = screen(to);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+    }
+    ctx.stroke();
+
+    ctx.fillStyle = pass.colour;
+    for (let index = 0; index < landmarks.length; index++) {
+      if (!visible(index)) continue;
+      const point = screen(index);
+      ctx.beginPath();
+      ctx.arc(point.x, point.y, pass.joint, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
 function tick() {
   if (!run) return;
   const now = performance.now();
@@ -758,6 +906,7 @@ function tick() {
     return;
   }
   if (r.paused) {
+    clearPose();
     $('msg').textContent = '已暂停';
     raf = requestAnimationFrame(tick);
     return;
@@ -792,6 +941,7 @@ function tick() {
   }
 
   if (landmarks) {
+    drawPose(landmarks, r.mode);
     const result = r.session.process(landmarks, activeMs(now) / 1000);
     if (!result) {
       $('msg').textContent = 'C++ 模型未返回结果';
@@ -813,6 +963,7 @@ function tick() {
       $('feedback').textContent = feedback;
     }
   } else if (detectionMessage) {
+    clearPose();
     $('msg').textContent = detectionMessage;
     $('feedback').textContent = '需要单人、全身、侧向入镜；左侧身体朝向镜头。';
   }
@@ -965,6 +1116,11 @@ $('autoReplay').onclick = () => {
   autoReplay = !autoReplay;
   $('autoReplay').textContent = autoReplay ? '自动重播：开' : '自动重播：关';
 };
+$('skeleton').onclick = () => {
+  showSkeleton = !showSkeleton;
+  $('skeleton').textContent = showSkeleton ? '显示骨架：开' : '显示骨架：关';
+  if (!showSkeleton) clearPose();
+};
 $('mirror').onclick = () => {
   mirrored = !mirrored;
   applyMirror();
@@ -1012,6 +1168,9 @@ videoElement.addEventListener('ended', () => {
 
 function applyMirror() {
   $('vid').classList.toggle('mirror', mirrored);
+  // The overlay sits on top and must flip with the picture, or the skeleton
+  // drifts to the wrong side.
+  $('poseCanvas').classList.toggle('mirror', mirrored);
   $('mirror').textContent = mirrored ? '镜像画面：开' : '镜像画面：关';
 }
 applyMirror();

@@ -13,9 +13,11 @@ export const EXERCISE_IDS = {
 
 let modulePromise = null;
 
-export function initCadenceWasm() {
+// `moduleOptions` lets a non-browser host hand the binary in (Node cannot fetch
+// a file:// URL from the Emscripten glue). The browser passes nothing.
+export function initCadenceWasm(moduleOptions) {
   if (!modulePromise) {
-    modulePromise = CadenceWasmFactory();
+    modulePromise = CadenceWasmFactory(moduleOptions);
   }
   return modulePromise;
 }

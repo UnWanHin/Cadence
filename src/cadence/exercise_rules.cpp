@@ -5,12 +5,17 @@ namespace cadence {
 EvaluationResult ExerciseEvaluator::evaluate(const PoseFeatures& f) const {
   EvaluationResult r;
   switch (exercise_) {
-    case ExerciseType::Plank:
-      if (!f.hip_angle) return r;
-      r.pose_detected=true; r.is_hold=true; r.main_value=*f.hip_angle;
-      r.quality_score=std::max(0.0f, 1.0f-std::fabs(*f.hip_angle-180.0f)/60.0f);
+    case ExerciseType::Plank: {
+      // The line matters, not which joints measured it: when the knee is hidden
+      // (legs pointing away from the camera) the ankle still gives the same
+      // straight-line reading, and the hold can keep counting.
+      const std::optional<float> line = f.hip_angle ? f.hip_angle : f.shoulder_hip_ankle_angle;
+      if (!line) return r;
+      r.pose_detected=true; r.is_hold=true; r.main_value=*line;
+      r.quality_score=std::max(0.0f, 1.0f-std::fabs(*line-180.0f)/60.0f);
       if (r.quality_score < .65f) r.feedback.push_back("保持身体直线，收紧核心");
       return r;
+    }
     case ExerciseType::JumpingJack:
       if (!f.wrist_distance) return r;
       r.pose_detected=true; r.main_value=*f.wrist_distance;

@@ -685,8 +685,11 @@ async function start(mode) {
       loadVideoSource();
       await waitForVideoReady($('vid'));
       if (videoFile) ensureVideoUploaded();
+      // Hold the first frame during the countdown. Playing straight away meant
+      // the first three seconds were never analysed, so a six second clip was
+      // measured as three.
+      $('vid').pause();
       $('vid').currentTime = 0;
-      await $('vid').play();
     } else {
       detachVideoElement();
     }
@@ -702,6 +705,9 @@ async function start(mode) {
       pausedTotal: 0,
       lastVideoTime: -1,
       lastResult: null,
+      angleMin: Infinity,
+      angleMax: -Infinity,
+      accepted: 0,
     };
     cadenceSession = null;
     $('msg').textContent = '准备 3 秒…';
@@ -802,6 +808,9 @@ window.__cadenceDebug = () => ({
   lastError: frameStats.lastError,
   coreRejects: frameStats.coreRejects,
   counted: frameStats.counted,
+  accepted: frameStats.accepted || 0,
+  holdFrames: frameStats.holdFrames || 0,
+  lastHold: frameStats.lastHold === true,
   loopErrors: frameStats.loopErrors || 0,
   loopRestarts: frameStats.loopRestarts || 0,
   trackerResets: frameStats.trackerResets || 0,
@@ -815,6 +824,14 @@ window.__cadenceDebug = () => ({
   reps: $('mReps').textContent,
   exercise: $('kind').value,
   mode: run ? run.mode : null,
+  metrics: {
+    reps: $('mReps').textContent,
+    quality: $('mQuality').textContent,
+    points: $('mPoints').textContent,
+    active: $('mActive').textContent,
+    natural: $('mNatural').textContent,
+  },
+  summary: run && run.session ? run.session.summary() : null,
 });
 
 // Watchdog: if the frame loop ever stops while a session is live, restart it.
@@ -1046,6 +1063,7 @@ function tickFrame() {
   }
   if (!r.start) {
     r.start = now;
+    if (r.mode === 'video') $('vid').play().catch(() => {});
     lock(true);
     $('pause').disabled = false;
     $('end').disabled = false;
@@ -1116,9 +1134,15 @@ function tickFrame() {
       $('feedback').textContent = '请调整机位后重试；演示模式可验证模型逻辑。';
     } else {
       r.lastResult = result;
+      frameStats.accepted = (frameStats.accepted || 0) + 1;
+      if (result.hold) frameStats.holdFrames = (frameStats.holdFrames || 0) + 1;
+      frameStats.lastHold = result.hold === true;
       if (Number.isFinite(result.mainValue)) {
         frameStats.angleMin = Math.min(frameStats.angleMin, result.mainValue);
         frameStats.angleMax = Math.max(frameStats.angleMax, result.mainValue);
+        r.angleMin = Math.min(r.angleMin, result.mainValue);
+        r.angleMax = Math.max(r.angleMax, result.mainValue);
+        r.accepted += 1;
         if (DEBUG) frameStats.series.push(+result.mainValue.toFixed(1));
       }
       if (result.inTarget) frameStats.inTargetFrames += 1;
@@ -1220,15 +1244,30 @@ function finish(auto, reason) {
   const metric = ex.type === 'hold'
     ? `保持 ${formatDuration(active)}`
     : `${reps} 次`;
+  // A zero that nobody can explain reads as a bug. Say what was measured and
+  // what the rule needs, so a shallow clip is visibly shallow.
+  let hint = '';
+  const amplitude = Number.isFinite(r.angleMin) && Number.isFinite(r.angleMax)
+    ? Math.round(r.angleMax - r.angleMin) : 0;
+  if (r.accepted === 0) {
+    hint = ex.type === 'hold'
+      ? '没有识别到支撑姿势：让肩、髋、踝（膝盖被挡住也可以）同时出现在画面里。'
+      : '没有识别到身体：请让肩、肘、腕、髋、膝同时入镜。';
+  } else if (ex.type === 'reps' && reps === 0) {
+    hint = `没有检测到完整动作：${ex.mainLabel}只变化了 ${amplitude}°，`
+      + `一次动作需要至少 40° 的起伏。`;
+  } else if (ex.type === 'hold' && active < 1000) {
+    hint = '支撑时间太短，保持 1 秒以上才会记分。';
+  }
   const prefix = auto ? '达到 20 分钟上限，已自动结束。' : reason ? `${reason}，已保存：` : '已保存：';
   $('msg').textContent = `${prefix}${metric}，质量 ${quality}，`
     + `基础 ${basePoints} 分，入账 ${actual} 分` + (demo ? '（演示不计分）' : '')
     + (saved ? '' : '（浏览器保存失败，本次结果仅在当前页面可见）');
-  $('feedback').textContent = demo
+  $('feedback').textContent = hint || (demo
     ? '演示模式：动作与计分逻辑与摄像头模式一致，但不计入周榜。'
     : r.mode === 'video'
       ? '视频分析记录已保存，可在下方查看或删除。'
-      : '记录已保存，可在下方查看或删除。';
+      : '记录已保存，可在下方查看或删除。');
   setMetrics(reps, quality, actual, summary.calories, active, natural);
   $('mPointsLabel').textContent = demo ? '积分（演示）' : '入账积分';
 }
@@ -1366,8 +1405,8 @@ videoElement.addEventListener('ended', () => {
     resetMetrics();
     $('msg').textContent = '自动重播，准备 3 秒…';
     const vid = $('vid');
+    vid.pause();
     vid.currentTime = 0;
-    vid.play().catch(() => {});
     tick();
   } else {
     finish(false, '视频播放结束');

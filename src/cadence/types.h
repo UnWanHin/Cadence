@@ -12,6 +12,9 @@ struct PoseFrame { std::array<Landmark, 33> landmarks{}; std::int64_t timestamp_
 enum class ExerciseType { Squat, PushUp, Lunge, Plank, JumpingJack };
 struct PoseFeatures {
   std::optional<float> knee_angle, elbow_angle, hip_angle, wrist_distance;
+  // Shoulder-hip-ankle: the plank line. Used when the knee is hidden, which is
+  // common in a plank because the legs point away from the camera.
+  std::optional<float> shoulder_hip_ankle_angle;
   std::optional<float> left_knee_angle, right_knee_angle, left_elbow_angle, right_elbow_angle;
 };
 struct EvaluationResult {

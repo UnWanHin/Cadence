@@ -43,6 +43,7 @@ PoseFeatures extract_features(const PoseFrame& frame) {
   features.knee_angle = minimum(features.left_knee_angle, features.right_knee_angle);
   features.elbow_angle = minimum(features.left_elbow_angle, features.right_elbow_angle);
   features.hip_angle = angle(frame, LS, LH, LK);
+  features.shoulder_hip_ankle_angle = angle(frame, LS, LH, LA);
   if (frame.landmarks[LW].visibility >= 0.5f && frame.landmarks[RW].visibility >= 0.5f) {
     features.wrist_distance = distance_between(frame.landmarks[LW], frame.landmarks[RW]);
   }

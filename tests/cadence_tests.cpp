@@ -207,6 +207,73 @@ void test_noise_around_standing_is_not_a_rep() {
   }
   expect(repetitions == 0, "jitter while standing must not count reps");
 }
+
+// Field report: a plank video showed quality but no time and no points. Root
+// cause was the rule needing the knee, which a plank usually hides, so almost
+// no frame was accepted at all.
+cadence::PoseFrame plank_frame(bool hide_knee) {
+  cadence::PoseFrame frame;
+  for (auto& landmark : frame.landmarks) landmark.visibility = 1.0f;
+  // shoulder, hip and ankle on one straight line
+  frame.landmarks[11] = {0.0f, 0.0f, 0.0f, 1.0f};
+  frame.landmarks[23] = {1.0f, 0.0f, 0.0f, 1.0f};
+  frame.landmarks[27] = {2.0f, 0.0f, 0.0f, 1.0f};
+  frame.landmarks[12] = {0.0f, 0.3f, 0.0f, 1.0f};
+  frame.landmarks[24] = {1.0f, 0.3f, 0.0f, 1.0f};
+  frame.landmarks[28] = {2.0f, 0.3f, 0.0f, 1.0f};
+  // the knee sits between hip and ankle; hide it when the test asks for it
+  frame.landmarks[25] = {1.5f, 0.0f, 0.0f, hide_knee ? 0.1f : 1.0f};
+  frame.landmarks[26] = {1.5f, 0.3f, 0.0f, hide_knee ? 0.1f : 1.0f};
+  return frame;
+}
+
+void test_plank_survives_a_hidden_knee() {
+  cadence::ExerciseEvaluator evaluator(cadence::ExerciseType::Plank);
+  const auto hidden = evaluator.evaluate(cadence::extract_features(plank_frame(true)));
+  expect(hidden.pose_detected, "a plank must be accepted when the knee is hidden but the ankle is visible");
+  expect(hidden.is_hold, "a plank with a hidden knee is still a hold");
+  expect(hidden.quality_score > 0.9f, "a straight shoulder-hip-ankle line should score high");
+
+  const auto visible = evaluator.evaluate(cadence::extract_features(plank_frame(false)));
+  expect(visible.pose_detected && visible.is_hold, "a plank with a visible knee still works");
+}
+
+void test_plank_session_accumulates_time_and_points() {
+  cadence::WorkoutSession session(cadence::ExerciseType::Plank);
+  const auto frame = plank_frame(true);
+  for (float time = 0.0f; time <= 6.0f; time += 1.0f / 24.0f) {
+    session.process(frame, time);
+  }
+  const auto summary = session.summary();
+  expect(summary.repetitions == 0, "a hold has no repetitions");
+  expect(summary.elapsed_seconds > 5.9f, "a six second hold should record six seconds");
+  expect(summary.points > 5, "a six second hold should award points");
+  expect(summary.average_quality > 0.9f, "a straight plank should score high");
+}
+
+// Quality must not be inflated by the idle frames a clip spends standing (or
+// lying) around doing nothing: a clip with zero repetitions reported 96.
+void test_quality_is_not_inflated_without_movement() {
+  cadence::WorkoutSession session(cadence::ExerciseType::PushUp);
+  float time = 0.0f;
+  // elbows stay almost straight: a plank filmed in push-up mode
+  for (int frame = 0; frame < 200; ++frame) {
+    cadence::PoseFrame pose;
+    for (auto& landmark : pose.landmarks) landmark.visibility = 1.0f;
+    pose.landmarks[11] = {0.0f, 0.0f, 0.0f, 1.0f};
+    pose.landmarks[13] = {1.0f, 0.0f, 0.0f, 1.0f};
+    pose.landmarks[15] = {2.0f, -0.05f, 0.0f, 1.0f};
+    pose.landmarks[12] = {0.0f, 0.3f, 0.0f, 1.0f};
+    pose.landmarks[14] = {1.0f, 0.3f, 0.0f, 1.0f};
+    pose.landmarks[16] = {2.0f, 0.25f, 0.0f, 1.0f};
+    session.process(pose, time);
+    time += 1.0f / 24.0f;
+  }
+  const auto summary = session.summary();
+  expect(summary.repetitions == 0, "a still elbow must not count a rep");
+  expect(summary.average_quality == 0.0f,
+         "a clip with no movement must not report a quality score");
+}
 }
 
 int main() {
@@ -225,6 +292,9 @@ int main() {
     test_reps_survive_a_shallower_standing_angle();
     test_shallow_bobbing_is_not_a_rep();
     test_noise_around_standing_is_not_a_rep();
+    test_plank_survives_a_hidden_knee();
+    test_plank_session_accumulates_time_and_points();
+    test_quality_is_not_inflated_without_movement();
     std::cout << "cadence_tests: all tests passed\n";
     return 0;
   } catch (const std::exception& error) {

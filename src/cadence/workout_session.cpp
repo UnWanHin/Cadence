@@ -79,8 +79,13 @@ EvaluationResult WorkoutSession::process(const PoseFrame& frame, float elapsed_s
   }
   const auto event = counter_.update(progress);
   elapsed_seconds_ = elapsed_seconds;
-  quality_sum_ += result.quality_score;
-  ++quality_samples_;
+  // Quality is a form score for the movement, so it is sampled where the
+  // movement happens. Averaging every idle frame made a clip with no reps at
+  // all still report "质量 96", which reads as "it should have counted".
+  if (!uses_depth_gate(exercise_) || progress >= 0.5f) {
+    quality_sum_ += result.quality_score;
+    ++quality_samples_;
+  }
   if (event.repetition_completed) {
     points_ += static_cast<int>(10.0f * result.quality_score);
     calories_ += calories_per_repetition(exercise_);

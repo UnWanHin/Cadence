@@ -49,6 +49,24 @@ The adapter owns model loading and landmark conversion. It must populate all 33 
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
 
+## 保持类动作与质量分
+
+**平板支撑是保持型**：没有"次数"，记的是秒数。每接受一帧就按 `0.15 千卡/秒` 折算，6 秒约 9 分。
+1 秒以下不记分。
+
+平板的直线原来只认 肩-髋-膝，可实测一条侧向平板视频里 **88% 的帧膝盖被身体挡住**，于是整段
+只记到 3.1 秒（视频 6.2 秒）。现在膝盖不可见时退回 **肩-髋-踝**，同一条片子能完整记满。
+
+**质量分只在动作过程里取样**（走深度门的动作取下沉过半的帧）。以前每帧都取样，于是出现
+"质量 96 但 0 次"这种自相矛盾的显示；现在没做动作就是 0，并且会说明差多少：
+
+```
+没有检测到完整动作：肘角只变化了 32°，一次动作需要至少 40° 的起伏。
+```
+
+顺带修了一个吃时间的问题：视频模式原来在 3 秒倒计时**就开始播放**，开头 3 秒的画面从未被分析，
+6 秒的片子只算 3 秒。现在倒计时期间停在第一帧，倒数结束才起播。
+
 ## 骨架开关与播放控制
 
 视频右上角有一枚「骨架 开/关」角标，工具条里也有同样的按钮，两处同步。

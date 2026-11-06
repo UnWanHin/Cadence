@@ -48,3 +48,16 @@ class MediaPipePoseBackend final : public cadence::PoseBackend {
 The adapter owns model loading and landmark conversion. It must populate all 33 `PoseFrame::landmarks` values with normalized coordinates and visibility scores. The movement core then remains unchanged.
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
+
+## 一条命令起 HTML 房间
+
+```bash
+./start.sh            # 前台，端口 8080
+./start.sh --bg       # 后台，日志在 .run/server.log
+./start.sh --stop     # 停止
+./start.sh --status   # 看状态和局域网地址
+./start.sh --port 9000
+```
+
+启动后会打印本机和局域网地址，手机浏览器直接打开局域网地址即可进入同一个房间；
+页面与 `/api/v1` 同源，不需要再拼 `?api=` 参数。`/app.apk` 会分发最新的安装包。

@@ -9,3 +9,4 @@ android/release.jks
 *.jks
 *.keystore
 dist/
+.run/

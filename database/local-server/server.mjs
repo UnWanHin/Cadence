@@ -661,10 +661,34 @@ server.on('clientError', (error, socket) => {
 // The APK scans for rooms by broadcasting on DISCOVERY_PORT. Announcing here
 // means a laptop-hosted room shows up in the phone's "search nearby" list, the
 // same way a phone-hosted room announces itself.
-// Hand out the debug APK so a laptop room can be shared the same way a phone's
-// room is: one QR, no cable.
-const APK_FILE = process.env.APK_FILE
-  || path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+// Hand out an installable APK so a laptop room can be shared the same way a
+// phone's room is: one QR, no cable. Newest existing candidate wins, so a fresh
+// release build or a downloaded release is what phones actually get.
+const APK_CANDIDATES = [
+  path.join(PROJECT_ROOT, 'dist', 'cadence.apk'),
+  path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'release', 'cadence.apk'),
+  path.join(PROJECT_ROOT, 'android', 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk'),
+];
+
+function pickApkFile() {
+  if (process.env.APK_FILE) return process.env.APK_FILE;
+  let best = null;
+  let bestMtime = -1;
+  for (const candidate of APK_CANDIDATES) {
+    try {
+      const stat = fs.statSync(candidate);
+      if (stat.isFile() && stat.mtimeMs > bestMtime) {
+        best = candidate;
+        bestMtime = stat.mtimeMs;
+      }
+    } catch {
+      // Not built yet: skip.
+    }
+  }
+  return best || APK_CANDIDATES[APK_CANDIDATES.length - 1];
+}
+
+const APK_FILE = pickApkFile();
 
 const DISCOVERY_PORT = Number(process.env.DISCOVERY_PORT || 8788);
 const DISCOVERY_MAGIC = 'CADENCE_ROOM_V1';

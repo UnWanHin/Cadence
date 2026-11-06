@@ -184,6 +184,24 @@ public final class RoomHttpServer {
                 }
                 return Response.error(405, "METHOD_NOT_ALLOWED", "只支持 GET/POST");
             }
+            if ("/profile".equals(api)) {
+                if (!"POST".equals(request.method)) {
+                    return Response.error(405, "METHOD_NOT_ALLOWED", "只支持 POST");
+                }
+                Map<String, Object> payload = RoomJson.readObject(request.bodyText());
+                String profileId = WorkoutEvent.str(payload.get("profileId")).trim();
+                String rawName = WorkoutEvent.str(payload.get("username")).trim();
+                if (profileId.isEmpty() || rawName.isEmpty()) {
+                    return Response.error(400, "VALIDATION_ERROR", "缺少用户标识或昵称");
+                }
+                String username = ChatMessage.normalizeUsername(rawName);
+                boolean updated = store.renameProfile(profileId, username);
+                Map<String, Object> body = new LinkedHashMap<>();
+                body.put("profileId", profileId);
+                body.put("username", username);
+                body.put("updated", updated);
+                return Response.json(200, body);
+            }
             if ("/leaderboard".equals(api)) {
                 String range = request.query.getOrDefault("range", "week");
                 List<Map<String, Object>> rows = Leaderboard.rankToMaps(store.events(), range, System.currentTimeMillis());

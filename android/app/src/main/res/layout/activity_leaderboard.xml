@@ -28,48 +28,6 @@
             android:textColor="@color/brand_muted"
             android:textSize="13sp" />
 
-        <!-- profile -->
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="@string/profile_title"
-            android:textColor="@color/brand_ink"
-            android:textSize="16sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:orientation="horizontal">
-
-            <EditText
-                android:id="@+id/usernameInput"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="@string/profile_name_hint"
-                android:inputType="textPersonName"
-                android:maxLength="20"
-                android:maxLines="1" />
-
-            <Button
-                android:id="@+id/usernameSave"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:text="@string/profile_save" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/myDeviceId"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/brand_muted"
-            android:textSize="12sp" />
-
         <!-- room -->
         <TextView
             android:layout_width="wrap_content"
@@ -125,13 +83,20 @@
                 android:text="@string/room_scan" />
 
             <Button
-                android:id="@+id/showQrButton"
+                android:id="@+id/albumScanButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:text="@string/room_show_qr" />
+                android:text="@string/room_scan_album" />
         </LinearLayout>
+
+        <Button
+            android:id="@+id/showQrButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/room_show_qr" />
 
         <Button
             android:id="@+id/discoverButton"

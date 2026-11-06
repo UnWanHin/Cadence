@@ -481,6 +481,7 @@ async function handleApi(req, res, url) {
 
   if (apiPath === '/events') return handleEvents(req, res);
   if (apiPath === '/chat') return handleChat(req, res);
+  if (apiPath === '/profile') return handleProfile(req, res);
   if (apiPath === '/health' && method === 'GET') {
     sendJson(res, 200, {
       ok: true,
@@ -521,6 +522,23 @@ async function handleApi(req, res, url) {
   }
 
   return false;
+}
+
+async function handleProfile(req, res) {
+  if (req.method !== 'POST') return false;
+  const body = JSON.parse((await readBody(req, 64 * 1024)).toString('utf8') || '{}');
+  const profileId = String(body.profileId || '').trim();
+  const username = String(body.username || '').trim().slice(0, 20);
+  if (!profileId || !username) throw new ApiError(400, 'VALIDATION_ERROR', '缺少用户标识或昵称');
+  let updated = 0;
+  const nameUpdatedAt = Date.now();
+  store.chatMessages = store.chatMessages.map((message) => {
+    if (message.profileId !== profileId || message.username === username) return message;
+    updated += 1;
+    return { ...message, username, nameUpdatedAt };
+  });
+  if (updated) saveStore();
+  sendJson(res, 200, { profileId, username, updated: updated > 0 }); return true;
 }
 
 async function serveStatic(req, res, url) {

@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mergeMessages, signature, createChatStore } from './chat.js';
+import { mergeMessages, signature, createChatStore, withDisplayNames } from './chat.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -54,6 +54,17 @@ function request(pathname, options) {
   const empty = mergeMessages([], [{ messageId: 'x', profileId: 'b', text: 'yo', sentAt: sentAt + 1 }]);
   assert(empty.length === 1, 'merging into an empty store adds the message');
   assert(signature(empty[0]) === 'b|' + (sentAt + 1) + '|yo', 'signature is stable');
+}
+
+// --- unit: chat history follows a renamed profile ------------------------
+{
+  const oldMessage = { messageId: 'm1', profileId: 'p1', username: '旧名字', text: '之前发的', sentAt: 1 };
+  const newMessage = { messageId: 'm2', profileId: 'p1', username: '新名字', text: '刚刚发的', sentAt: 2 };
+  const renamed = withDisplayNames([oldMessage, newMessage], [], { profileId: 'me', username: '我' });
+  assert(renamed[0].username === '新名字', 'old chat messages show the newest name from that profile');
+
+  const local = withDisplayNames([oldMessage], [], { profileId: 'p1', username: '本机新名字' });
+  assert(local[0].username === '本机新名字', 'the local profile name applies immediately');
 }
 
 // --- integration: A sends, B reads ---------------------------------------

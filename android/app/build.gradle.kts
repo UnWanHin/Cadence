@@ -80,6 +80,18 @@ android {
     }
 }
 
+// The pose model lives once, in prototype/, and is copied into assets at build
+// time. Keeping a second committed copy only doubled the repository size and
+// let the two drift apart.
+val syncPoseModel by tasks.registering(Copy::class) {
+    from(rootProject.file("../prototype/pose_landmarker_full.task"))
+    into(layout.projectDirectory.dir("src/main/assets"))
+}
+
+tasks.named("preBuild") {
+    dependsOn(syncPoseModel)
+}
+
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
         variant.outputs.forEach { output ->

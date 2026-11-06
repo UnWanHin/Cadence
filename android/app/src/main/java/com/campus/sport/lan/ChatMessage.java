@@ -11,13 +11,25 @@ public final class ChatMessage {
     public final String profileId;
     public final String text;
     public final long sentAt;
+    /**
+     * When the sender last renamed themselves, or 0 when the stored name still
+     * belongs to the moment the message was sent. Kept separate from
+     * {@link #sentAt} so renaming history does not reorder it.
+     */
+    public final long nameUpdatedAt;
 
     public ChatMessage(String messageId, String username, String profileId, String text, long sentAt) {
+        this(messageId, username, profileId, text, sentAt, 0L);
+    }
+
+    public ChatMessage(String messageId, String username, String profileId, String text,
+                       long sentAt, long nameUpdatedAt) {
         this.messageId = messageId;
         this.username = username;
         this.profileId = profileId;
         this.text = text;
         this.sentAt = sentAt;
+        this.nameUpdatedAt = nameUpdatedAt;
     }
 
     /** Returns null when the payload is not a usable message. */
@@ -29,12 +41,18 @@ public final class ChatMessage {
         String id = WorkoutEvent.str(map.get("messageId"));
         if (id.isEmpty()) id = fallbackId;
 
-        String username = WorkoutEvent.str(map.get("username")).trim();
+        return new ChatMessage(id, normalizeUsername(map.get("username")),
+                WorkoutEvent.str(map.get("profileId")), text,
+                (long) WorkoutEvent.num(map.get("sentAt"), System.currentTimeMillis()),
+                (long) WorkoutEvent.num(map.get("nameUpdatedAt"), 0));
+    }
+
+    /** Trims a display name to the room's 20-character limit. */
+    public static String normalizeUsername(Object raw) {
+        String username = WorkoutEvent.str(raw).trim();
         if (username.isEmpty()) username = "同学";
         if (username.length() > 20) username = username.substring(0, 20);
-
-        return new ChatMessage(id, username, WorkoutEvent.str(map.get("profileId")), text,
-                (long) WorkoutEvent.num(map.get("sentAt"), System.currentTimeMillis()));
+        return username;
     }
 
     public Map<String, Object> toMap() {
@@ -44,6 +62,7 @@ public final class ChatMessage {
         map.put("profileId", profileId);
         map.put("text", text);
         map.put("sentAt", sentAt);
+        map.put("nameUpdatedAt", nameUpdatedAt);
         return map;
     }
 }

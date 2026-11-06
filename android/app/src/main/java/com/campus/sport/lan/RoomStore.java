@@ -13,4 +13,12 @@ public interface RoomStore {
     List<ChatMessage> chat();
 
     void addChat(ChatMessage message);
+
+    /**
+     * Applies a new display name to every chat message from [profileId].
+     * Returns true when at least one message changed.
+     */
+    default boolean renameProfile(String profileId, String username) {
+        return false;
+    }
 }

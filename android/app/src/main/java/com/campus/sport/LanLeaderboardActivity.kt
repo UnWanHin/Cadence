@@ -16,12 +16,14 @@ import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.campus.sport.lan.AppShareCode
 import com.campus.sport.lan.ChatMessage
+import com.campus.sport.lan.ChatNames
 import com.campus.sport.lan.HostElection
 import com.campus.sport.lan.LanRoom
 import com.campus.sport.lan.Leaderboard
@@ -60,8 +62,6 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private lateinit var chatInput: EditText
     private lateinit var statusText: TextView
     private lateinit var roomInput: EditText
-    private lateinit var usernameInput: EditText
-    private lateinit var deviceIdText: TextView
 
     private var pollJob: Job? = null
     private var remoteRoom: String? = null
@@ -75,16 +75,24 @@ class LanLeaderboardActivity : AppCompatActivity() {
     private val rangeKeys = arrayOf("day", "week", "month", "all")
 
     private val scanLauncher = registerForActivityResult(ScanContract()) { result ->
-        val contents = result?.contents
-        if (contents.isNullOrBlank()) return@registerForActivityResult
+        handleScannedContents(result?.contents)
+    }
+
+    private val albumScanLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+            if (uri != null) decodeAlbumQr(uri)
+        }
+
+    private fun handleScannedContents(contents: String?) {
+        if (contents.isNullOrBlank()) return
         if (AppShareCode.isShareCode(contents)) {
             onAppShareScanned(contents)
-            return@registerForActivityResult
+            return
         }
         val address = QrCode.parseRoomAddress(contents)
         if (address == null) {
             Toast.makeText(this, R.string.room_scan_invalid, Toast.LENGTH_LONG).show()
-            return@registerForActivityResult
+            return
         }
         roomInput.setText(address)
         joinRoom()
@@ -155,8 +163,6 @@ class LanLeaderboardActivity : AppCompatActivity() {
         chatInput = findViewById(R.id.chatInput)
         statusText = findViewById(R.id.roomStatus)
         roomInput = findViewById(R.id.roomAddress)
-        usernameInput = findViewById(R.id.usernameInput)
-        deviceIdText = findViewById(R.id.myDeviceId)
 
         rangeSpinner.adapter = ArrayAdapter(
             this,
@@ -170,15 +176,13 @@ class LanLeaderboardActivity : AppCompatActivity() {
         findViewById<Button>(R.id.joinButton).setOnClickListener { joinRoom() }
         findViewById<Button>(R.id.chatSend).setOnClickListener { sendChat() }
         findViewById<Button>(R.id.scanButton).setOnClickListener { startScan() }
+        findViewById<Button>(R.id.albumScanButton).setOnClickListener { startAlbumScan() }
         findViewById<Button>(R.id.discoverButton).setOnClickListener { discoverRooms() }
         findViewById<Button>(R.id.shareAppButton).setOnClickListener { shareApp() }
         findViewById<Button>(R.id.checkUpdateButton).setOnClickListener { checkForUpdate() }
         findViewById<Button>(R.id.showQrButton).setOnClickListener { showMyQr() }
-        findViewById<Button>(R.id.usernameSave).setOnClickListener { saveUsername() }
 
         LanRoom.ensureLoaded(this)
-        usernameInput.setText(LanRoom.username(this))
-        deviceIdText.text = getString(R.string.profile_my_id, LanRoom.deviceId(this))
 
         roomInput.setText(intent.getStringExtra(EXTRA_ROOM).orEmpty())
         refreshBoard()
@@ -190,7 +194,11 @@ class LanLeaderboardActivity : AppCompatActivity() {
         super.onResume()
         startPolling()
         refreshBoard()
+        renderChat()
         updateStatus()
+        publishProfileName()
+        autoCheckUpdate()
+        offerNearbyRoom()
     }
 
     override fun onPause() {
@@ -201,11 +209,19 @@ class LanLeaderboardActivity : AppCompatActivity() {
 
     // ---- profile -----------------------------------------------------------
 
-    private fun saveUsername() {
-        val saved = LanRoom.setUsername(this, usernameInput.text.toString())
-        usernameInput.setText(saved)
-        Toast.makeText(this, getString(R.string.profile_saved, saved), Toast.LENGTH_SHORT).show()
-        refreshBoard()
+    /**
+     * Tells the room the name currently saved in "我的". The nickname is edited
+     * there, so this screen republishes it whenever it comes back to the front.
+     */
+    private fun publishProfileName() {
+        val room = remoteRoom ?: return
+        val username = LanRoom.username(this)
+        val profileId = LanRoom.profileId(this)
+        lifecycleScope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching { RoomClient(room).updateProfile(username, profileId) }
+            }
+        }
     }
 
     // ---- hosting and joining ------------------------------------------------
@@ -302,6 +318,7 @@ class LanLeaderboardActivity : AppCompatActivity() {
             } else {
                 updateStatus()
                 announceProtocolMismatch()
+                publishProfileName()
             }
             refreshBoard()
             renderChat()
@@ -536,6 +553,38 @@ class LanLeaderboardActivity : AppCompatActivity() {
             .onFailure { Toast.makeText(this, getString(R.string.room_scan_failed, it.message ?: ""), Toast.LENGTH_LONG).show() }
     }
 
+    /** Opens the system photo picker so an existing screenshot can be scanned. */
+    private fun startAlbumScan() {
+        runCatching {
+            albumScanLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+            )
+        }.onFailure {
+            Toast.makeText(this, getString(R.string.room_scan_failed, it.message ?: ""), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun decodeAlbumQr(uri: Uri) {
+        lifecycleScope.launch {
+            val decoded = withContext(Dispatchers.IO) {
+                runCatching { QrCode.decodeImage(this@LanLeaderboardActivity, uri) }
+            }
+            decoded.onSuccess { contents ->
+                if (contents.isNullOrBlank()) {
+                    Toast.makeText(this@LanLeaderboardActivity, R.string.room_scan_no_code, Toast.LENGTH_LONG).show()
+                } else {
+                    handleScannedContents(contents)
+                }
+            }.onFailure {
+                Toast.makeText(
+                    this@LanLeaderboardActivity,
+                    getString(R.string.room_scan_image_failed, it.message ?: ""),
+                    Toast.LENGTH_LONG,
+                ).show()
+            }
+        }
+    }
+
     private fun showMyQr() {
         val payload = shareableAddress() ?: run {
             Toast.makeText(this, R.string.room_qr_empty, Toast.LENGTH_LONG).show()
@@ -680,8 +729,9 @@ class LanLeaderboardActivity : AppCompatActivity() {
         remoteEvents.clear()
         remoteEvents.addAll(snapshot.first)
         val incoming = snapshot.second
-        val known = remoteChat.map { it.messageId }.toSet()
-        if (incoming.any { it.messageId !in known }) {
+        // A rename rewrites existing messages, so changes are not limited to
+        // new message IDs. Compare names too or history would stay stale.
+        if (chatChanged(incoming)) {
             remoteChat.clear()
             remoteChat.addAll(incoming)
             chatDirty.set(true)
@@ -693,6 +743,17 @@ class LanLeaderboardActivity : AppCompatActivity() {
     }
 
     // ---- rendering ---------------------------------------------------------
+
+    private fun chatChanged(incoming: List<ChatMessage>): Boolean {
+        if (incoming.size != remoteChat.size) return true
+        val known = remoteChat.associateBy { it.messageId }
+        return incoming.any { message ->
+            val previous = known[message.messageId] ?: return@any true
+            previous.username != message.username ||
+                previous.text != message.text ||
+                previous.sentAt != message.sentAt
+        }
+    }
 
     private fun allEvents(): List<WorkoutEvent> {
         val local = LanRoom.localStore(this).events()
@@ -741,8 +802,15 @@ class LanLeaderboardActivity : AppCompatActivity() {
             chatBox.addView(label(getString(R.string.chat_empty)))
             return
         }
+        val names = ChatNames.resolve(
+            messages,
+            allEvents(),
+            LanRoom.profileId(this),
+            LanRoom.username(this),
+        )
         messages.takeLast(100).forEach { message ->
-            chatBox.addView(label("${message.username}：${message.text}"))
+            val name = names[message.profileId].orEmpty().ifEmpty { message.username }
+            chatBox.addView(label("$name：${message.text}"))
         }
     }
 

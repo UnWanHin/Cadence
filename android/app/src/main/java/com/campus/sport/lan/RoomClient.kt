@@ -72,6 +72,20 @@ class RoomClient(baseUrl: String) {
         }
     }
 
+    /**
+     * Publishes this device's current display name so the room can rewrite the
+     * name on messages this profile sent earlier. Returns false when the host
+     * does not support the endpoint (for example an older desktop service).
+     */
+    fun updateProfile(username: String, profileId: String): Boolean = runCatching {
+        val body = linkedMapOf<String, Any?>(
+            "username" to username,
+            "profileId" to profileId,
+        )
+        request("POST", "/api/v1/profile", RoomJson.write(body))
+        true
+    }.getOrDefault(false)
+
     fun sendChat(text: String, username: String, profileId: String): ChatMessage? {
         val body = linkedMapOf<String, Any?>(
             "username" to username,

@@ -124,7 +124,7 @@
 <script src="core.js"></script>
 <script type="module">
 import { rankEvents, eventFromRecord, createProfile, randomId } from './leaderboard.js';
-import { createChatStore } from './chat.js';
+import { createChatStore, withDisplayNames } from './chat.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
 const STORE = 'campus-model-v1';
@@ -254,7 +254,7 @@ function drawChat() {
   const box = $('chatLog'); box.replaceChildren();
   // Always render from the store: it is the single source of truth, updated by
   // polling, sending and WebSocket pushes alike.
-  const messages = chatStore.messages;
+  const messages = withDisplayNames(chatStore.messages, allEvents(), profile);
   if (!messages.length) { box.innerHTML = '<span class="empty">加入局域网后开始聊天</span>'; return; }
   for (const message of messages.slice(-100)) {
     const line = document.createElement('div');
@@ -879,7 +879,17 @@ function finish(auto, reason) {
   $('mPointsLabel').textContent = demo ? '积分（演示）' : '入账积分';
 }
 
-$('who').oninput = () => { profile.username = name(); draw(); };
+$('who').oninput = () => { profile.username = name(); draw(); drawChat(); };
+// Commit the new name to the room once the field is left, so earlier chat
+// messages can be rewritten for every client.
+$('who').onchange = () => {
+  const body = JSON.stringify({ username: name(), profileId: profile.profileId });
+  fetch(apiUrl('/profile'), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body,
+  }).catch(() => { /* offline mode */ });
+};
 $('boardRange').onchange = drawBoard;
 $('syncNow').onclick = syncLan;
 $('chatForm').onsubmit = async (event) => {

@@ -133,4 +133,27 @@ public final class FileRoomStore implements RoomStore {
             save();
         }
     }
+
+    @Override
+    public boolean renameProfile(String profileId, String username) {
+        if (profileId == null || profileId.trim().isEmpty()) return false;
+        if (username == null || username.trim().isEmpty()) return false;
+        String clean = username.trim();
+        if (clean.length() > 20) clean = clean.substring(0, 20);
+
+        synchronized (lock) {
+            boolean changed = false;
+            long renamedAt = System.currentTimeMillis();
+            for (int i = 0; i < chat.size(); i++) {
+                ChatMessage message = chat.get(i);
+                if (!profileId.equals(message.profileId) || clean.equals(message.username)) continue;
+                chat.set(i, new ChatMessage(
+                        message.messageId, clean, message.profileId, message.text,
+                        message.sentAt, renamedAt));
+                changed = true;
+            }
+            if (changed) save();
+            return changed;
+        }
+    }
 }

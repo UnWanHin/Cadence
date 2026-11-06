@@ -10,3 +10,5 @@ android/release.jks
 *.keystore
 dist/
 .run/
+# copied from prototype/ at build time
+android/app/src/main/assets/pose_landmarker_full.task

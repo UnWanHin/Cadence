@@ -3,7 +3,6 @@ package com.campus.sport
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
@@ -23,7 +22,7 @@ class HomeActivity : AppCompatActivity() {
             startActivity(Intent(this, LanLeaderboardActivity::class.java))
         }
         findViewById<View>(R.id.navProfile).setOnClickListener {
-            showComingSoon()
+            startActivity(Intent(this, ProfileActivity::class.java))
         }
     }
 
@@ -33,9 +32,5 @@ class HomeActivity : AppCompatActivity() {
             .setMessage(R.string.home_manual_dialog_message)
             .setPositiveButton(R.string.home_manual_dialog_ok, null)
             .show()
-    }
-
-    private fun showComingSoon() {
-        Toast.makeText(this, R.string.home_coming_soon, Toast.LENGTH_SHORT).show()
     }
 }

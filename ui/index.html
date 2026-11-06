@@ -46,6 +46,14 @@
   .empty{color:#52736c;font-size:14px}
   .board{font-size:15px}
   .board div{padding:3px 0}
+  .qr-panel{display:none;gap:18px;flex-wrap:wrap;align-items:flex-start;margin-top:10px}
+  .qr-panel.on{display:flex}
+  .qr-frame{background:#fff;border:1px solid #d8e6e1;border-radius:14px;padding:10px;box-shadow:0 4px 14px rgba(20,94,80,.08)}
+  .qr-frame svg{display:block;width:220px;height:220px;image-rendering:pixelated}
+  .qr-info{flex:1 1 260px;min-width:240px}
+  .qr-info .label{font-size:14px;color:#183d38;margin:0 0 4px}
+  .qr-info .url{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:#145e50;background:#f2f8f6;border-radius:8px;padding:8px 10px;word-break:break-all}
+  .qr-tabs{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   @media(max-width:720px){.metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
 </style>
 </head>
@@ -115,6 +123,23 @@
     <div id="board" class="board"></div>
   </section>
   <section>
+    <h2>分享到手机</h2>
+    <p class="hint">手机扫一下就能打开这个房间，或者直接下载安装包。二维码显示的是当前地址，所以要在电脑上通过局域网地址打开本页才有用。</p>
+    <div class="qr-tabs">
+      <button id="qrRoom">房间二维码</button>
+      <button id="qrApk" class="secondary">安装包二维码</button>
+      <button id="qrCopy" class="secondary" disabled>复制链接</button>
+    </div>
+    <div id="qrPanel" class="qr-panel">
+      <div class="qr-frame" id="qrFrame"></div>
+      <div class="qr-info">
+        <p class="label" id="qrTitle">房间地址</p>
+        <p class="url" id="qrUrl"></p>
+        <p class="file-meta" id="qrNote"></p>
+      </div>
+    </div>
+  </section>
+  <section>
     <h2>局域网聊天</h2>
     <div id="chatLog" class="board"><span class="empty">加入局域网后开始聊天</span></div>
     <form id="chatForm"><input id="chatInput" maxlength="500" placeholder="输入消息…"><button>发送</button></form>
@@ -125,6 +150,7 @@
 <script type="module">
 import { rankEvents, eventFromRecord, createProfile, randomId } from './leaderboard.js';
 import { createChatStore, withDisplayNames } from './chat.js';
+import { toSvg } from './qr.js';
 const $ = (id) => document.getElementById(id);
 const { EXERCISES, ORDER, day, week, formatDuration } = Core;
 const STORE = 'campus-model-v1';
@@ -1008,6 +1034,87 @@ $('kind').value = 'squat';
 resetMetrics();
 draw();
 refreshVideoLibrary();
+
+// ---- 分享二维码 -----------------------------------------------------------
+// The APK lives on the same origin, so the QR only needs the absolute URL of
+// this page's server. Opened from disk (file://) there is no server to point
+// at, and the panel says so instead of encoding a useless path.
+let qrTarget = null;
+
+function shareBase() {
+  if (location.protocol === 'file:') return null;
+  return location.origin;
+}
+
+function showQr(kind) {
+  const base = shareBase();
+  const panel = $('qrPanel');
+  if (!base) {
+    $('qrFrame').innerHTML = '';
+    $('qrTitle').textContent = '无法生成';
+    $('qrUrl').textContent = '当前是从本地文件打开的页面';
+    $('qrNote').textContent = '用 start.sh 启动后，通过 http://<局域网地址>:8080/ 打开本页再分享。';
+    $('qrCopy').disabled = true;
+    panel.classList.add('on');
+    return;
+  }
+
+  const url = kind === 'apk' ? base + '/app.apk' : location.href;
+  qrTarget = url;
+  $('qrFrame').innerHTML = toSvg(url, { size: 220, margin: 4 });
+  $('qrTitle').textContent = kind === 'apk' ? '安装包下载' : '房间地址';
+  $('qrUrl').textContent = url;
+  $('qrNote').textContent = kind === 'apk'
+    ? '手机扫码后浏览器会下载 cadence.apk，装好后可以选择加入房间。'
+    : '手机扫码直接打开这个房间，界面和电脑端连通。';
+  $('qrCopy').disabled = false;
+  panel.classList.add('on');
+}
+
+$('qrRoom').onclick = () => showQr('room');
+$('qrApk').onclick = () => showQr('apk');
+function legacyCopy(text) {
+  // Clipboard API needs a secure context and a user gesture the browser trusts;
+  // a LAN page on plain http, or an embedding shell, may give neither.
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.setAttribute('readonly', '');
+  field.style.position = 'fixed';
+  field.style.opacity = '0';
+  document.body.appendChild(field);
+  field.select();
+  const ok = (() => {
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    }
+  })();
+  field.remove();
+  return ok;
+}
+
+async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    // The promise can stay pending when the page lacks clipboard permission, so
+    // it races a short timer instead of leaving the button looking dead.
+    const settled = await Promise.race([
+      navigator.clipboard.writeText(text).then(() => true).catch(() => false),
+      new Promise((resolve) => setTimeout(() => resolve(null), 700)),
+    ]);
+    if (settled === true) return true;
+  }
+  return legacyCopy(text);
+}
+
+$('qrCopy').onclick = async () => {
+  if (!qrTarget) return;
+  const copied = await copyText(qrTarget);
+  // Either way the user gets a reaction: the link is also shown above, so a
+  // failed copy is recoverable by selecting it by hand.
+  $('qrCopy').textContent = copied ? '已复制' : '请手动复制上面的链接';
+  setTimeout(() => { $('qrCopy').textContent = '复制链接'; }, 1800);
+};
 </script>
 </body>
 </html>

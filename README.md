@@ -49,6 +49,13 @@ The adapter owns model loading and landmark conversion. It must populate all 33 
 
 The current environment does not ship MediaPipe C++ or OpenCV development headers, so the default build reports the native backend as unavailable rather than pretending that camera inference is wired.
 
+## 网页上的分享二维码
+
+页面底部「分享到手机」有两个按钮：房间二维码（手机扫了直接进同一个房间）和安装包二维码（扫了直接下载 `cadence.apk`）。
+二维码在浏览器里现算，`ui/qr.js` 是一个无依赖的编码器（byte 模式、纠错级别 M、版本 1-10），
+`ui/test-qr.mjs` 会把矩阵渲染成图片再用 OpenCV 解码回来验证，`ui/test-qr-page.mjs` 则在真浏览器里
+点了按钮、截了图、再解码一次。
+
 ## 一条命令起 HTML 房间
 
 ```bash

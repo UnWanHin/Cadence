@@ -119,4 +119,20 @@ bash tools/build-wasm.sh        # 改了核心后重建 ui/wasm/（需要 emscri
 ```
 
 启动后会打印本机和局域网地址，手机浏览器直接打开局域网地址即可进入同一个房间；
-页面与 `/api/v1` 同源，不需要再拼 `?api=` 参数。`/app.apk` 会分发最新的安装包。
+页面与 `/api/v1` 同源，不需要再拼 `?api=` 参数。
+
+### 换一台电脑要做什么
+
+**什么都不用编。** 直接 `git clone` 然后 `./start.sh` 就能跑：网页、WASM 核心（`ui/wasm/`）、
+本地姿态模型（`prototype/*.task`）都在仓库里，运行时只依赖 **Node.js 18+**（`curl`、`ip` 只影响
+启动信息的排版）。不需要 npm install，不需要 emscripten，不需要 JDK/Gradle。
+
+唯一缺的是安卓安装包：`dist/` 在 `.gitignore` 里，新克隆没有它，`/app.apk` 会返回 404 `NO_APK`。
+要发安装包先跑一次：
+
+```bash
+./tools/fetch-apk.sh          # 取最新 release 的 APK 到 dist/
+./tools/fetch-apk.sh v0.3.3   # 或者指定版本
+```
+
+`start.sh` 启动时如果发现没有这个文件，也会直接提示下一步。

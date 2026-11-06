@@ -182,6 +182,12 @@ cat <<EOF
 
 EOF
 
+if [ ! -f "$ROOT/dist/cadence.apk" ]; then
+    echo "  提示：dist/cadence.apk 不存在，/app.apk 会返回 404。"
+    echo "        需要发安装包时先跑一次 ./tools/fetch-apk.sh"
+    echo
+fi
+
 if [ -z "$health_ok" ]; then
     echo "  警告：健康检查没有通过，服务可能还没起来。" >&2
 fi
